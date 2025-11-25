@@ -1,49 +1,82 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import { fetch } from "@tauri-apps/plugin-http";
 import "./App.css";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+interface Message {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+function App() {
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  async function sendMessage(e: React.FormEvent) {
+    e.preventDefault();
+    if (!input.trim()) return;
+
+    const userMsg: Message = { role: "user", content: input };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput("");
+    setLoading(true);
+
+    try {
+      // fetching with tauri fetch
+      const response = await fetch("http://localhost:3030/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: newMessages,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // data.message matches the ChatResponse structure from the daemon
+        setMessages([...newMessages, data.message]);
+      } else {
+        console.error("Failed to send message", response.status);
+        const errorMsg: Message = { role: "system", content: `Error: ${response.statusText}` };
+        setMessages([...newMessages, errorMsg]);
+      }
+    } catch (err) {
+      console.error("Error:", err);
+      const errorMsg: Message = { role: "system", content: `Connection error: ${err}` };
+      setMessages([...newMessages, errorMsg]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+      <h1>chat</h1>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+      <div style={{ marginBottom: "20px", border: "1px solid #ccc", padding: "10px", height: "300px", overflowY: "auto", textAlign: "left" }}>
+        {messages.map((msg, i) => (
+          <div key={i}>
+            <strong>{msg.role}:</strong> {msg.content}
+          </div>
+        ))}
+        {loading && <div>test</div>}
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
+      <form className="row" onSubmit={sendMessage}>
         <input
           id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type something"
+          disabled={loading}
         />
-        <button type="submit">Greet</button>
+        <button type="submit" disabled={loading}>
+          Send
+        </button>
       </form>
-      <p>{greetMsg}</p>
     </main>
   );
 }
