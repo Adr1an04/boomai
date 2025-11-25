@@ -1,23 +1,28 @@
 use axum::{
-    extract::State,
     routing::{get, post},
-    Json, Router,
+    Router,
 };
-use boomai_core::{ChatRequest, ChatResponse, DummyProvider, Message, ModelProvider, Role};
-use serde_json::{json, Value};
-use std::{net::SocketAddr, sync::Arc};
+use boomai_core::{DummyProvider, ModelProvider};
+use std::sync::Arc;
 
-#[derive(Clone)]
-struct AppState {
-    model_provider: Arc<dyn ModelProvider>,
-}
+mod config;
+mod handlers;
+mod state;
+
+use config::Config;
+use handlers::{chat_handler, health_check, version_check};
+use state::AppState;
 
 #[tokio::main]
 async fn main() {
     // log test
     println!("Boomai core daemon (Rust) starting...");
 
-    // grounds for ai model proivider
+    // Load config
+    let config = Config::from_env();
+
+    // Initialize provider - default to DummyProvider for now
+    // In the future, we can load this from config or env vars
     let provider: Arc<dyn ModelProvider> = Arc::new(DummyProvider);
     let state = AppState {
         model_provider: provider,
@@ -30,47 +35,16 @@ async fn main() {
         .route("/chat", post(chat_handler))
         .with_state(state);
 
-    // pass port from env or default to 3030
-    let port = std::env::var("BOOMAI_PORT")
-        .unwrap_or_else(|_| "3030".to_string())
-        .parse::<u16>()
-        .expect("Invalid port number");
+    println!("Listening on http://{}", config.addr);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    println!("Listening on http://{}", addr);
-
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(config.addr)
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!(
+                "Failed to bind to {}: {}\nHint: Port might be in use. Try: lsof -i :{}",
+                config.addr, e, config.addr.port()
+            );
+            std::process::exit(1);
+        });
     axum::serve(listener, app).await.unwrap();
-}
-
-async fn health_check() -> Json<Value> {
-    Json(json!({ "status": "ok" }))
-}
-
-async fn version_check() -> Json<Value> {
-    Json(json!({ "version": env!("CARGO_PKG_VERSION") }))
-}
-
-async fn chat_handler(
-    State(state): State<AppState>,
-    Json(payload): Json<ChatRequest>,
-) -> Json<ChatResponse> {
-    println!(
-        "chat request with {} messages",
-        payload.messages.len()
-    );
-
-    match state.model_provider.chat(payload).await {
-        Ok(response) => Json(response),
-        Err(err) => {
-            eprintln!("Error chat request: {}", err);
-            // error response
-            Json(ChatResponse {
-                message: Message {
-                    role: Role::System,
-                    content: format!("Error: {}", err),
-                },
-            })
-        }
-    }
 }
