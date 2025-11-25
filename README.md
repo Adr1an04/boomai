@@ -1,29 +1,33 @@
 # Boomai
 
-Boomai is local-first AI orchestration for your models, data, and tools.
-It runs on your machine, connects to local or API LLMs, indexes your workspace,
-and exposes everything through an extensible assistant interface and pluggable mods.
+Boomai is an experiment in local-first AI for your own machine.
+
+The idea is simple: a small Rust daemon that talks to language models and your files, plus a desktop client on top so you don’t have to live in a terminal. It’s meant to be something you can actually run, poke at, and hack on.
 
 ## Status
 
-🚧 **Under Construction** 🚧
-Currently pivoting core architecture to Rust.
+Very early.
 
-## Repo structure
+APIs, layout, and names will change. Things will break. Expect rough edges.
 
-- `boomai-daemon/` – Core daemon (Rust binary, HTTP server)
-- `boomai-core/` – Core logic library (Rust)
-- `desktop/` – Desktop app (Tauri + React placeholder)
-- `mods/` – Built-in/example mods (placeholder)
-- `docs/` – Docs and design notes
+Right now the work is mostly on the Rust daemon and a minimal HTTP API. Desktop and mods are just stubs on disk.
+
+## Layout
+
+- `boomai-daemon/` – Rust binary, process entrypoint and HTTP server
+- `boomai-core/` – Rust library for core logic and types
+- `desktop/` – planned desktop client (Tauri + React)
+- `mods/` – planned mods and examples
+- `docs/` – notes, sketches, and design docs
 
 ## Development
 
-### Prerequisites
-- Rust (stable)
+You’ll need:
 
-### Running the Core Daemon
+- Rust (stable toolchain)
+
+Run the daemon from the repo root:
+
 ```bash
 cargo run -p boomai-daemon
 ```
-Listens on `http://127.0.0.1:3030` by default.
