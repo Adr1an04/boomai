@@ -6,7 +6,7 @@ and exposes everything through an extensible assistant interface and pluggable m
 
 ## Status
 
-Early work in progress. Expect things to change and break.
+Early work in progress. Expect things to change and maybe break :D
 
 ## Repo structure
 

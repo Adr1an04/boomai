@@ -47,6 +47,13 @@ web_modules/
 # TypeScript cache
 *.tsbuildinfo
 
+# TypeScript compiled output
+*.js.map
+*.d.ts.map
+# Compiled JavaScript/TypeScript files in src directories (shouldn't happen with proper tsconfig)
+**/src/**/*.js
+**/src/**/*.d.ts
+
 # Optional npm cache directory
 .npm
 
