@@ -2,6 +2,6 @@
 members = [
     "boomai-core",
     "boomai-daemon",
+    "desktop/src-tauri",
 ]
 resolver = "2"
-

@@ -16,7 +16,7 @@ Right now the work is mostly on the Rust daemon and a minimal HTTP API. Desktop 
 
 - `boomai-daemon/` – Rust binary, process entrypoint and HTTP server
 - `boomai-core/` – Rust library for core logic and types
-- `desktop/` – planned desktop client (Tauri + React)
+- `desktop/` – Desktop client (Tauri + React)
 - `mods/` – planned mods and examples
 - `docs/` – notes, sketches, and design docs
 
@@ -25,9 +25,18 @@ Right now the work is mostly on the Rust daemon and a minimal HTTP API. Desktop 
 You’ll need:
 
 - Rust (stable toolchain)
+- Node.js (for desktop)
 
 Run the daemon from the repo root:
 
 ```bash
 cargo run -p boomai-daemon
+```
+
+Run the desktop client:
+
+```bash
+cd desktop
+npm install
+npm run tauri dev
 ```
