@@ -1,7 +1,8 @@
 use axum::{
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
+use boomai_core::{ChatRequest, ChatResponse, Message, Role};
 use serde_json::{json, Value};
 use std::net::SocketAddr;
 
@@ -13,7 +14,8 @@ async fn main() {
     // route set up for inital health and version checks
     let app = Router::new()
         .route("/health", get(health_check))
-        .route("/version", get(version_check));
+        .route("/version", get(version_check))
+        .route("/chat", post(chat_handler));
 
     // pass port from env or default to 3030
     let port = std::env::var("BOOMAI_PORT")
@@ -36,3 +38,18 @@ async fn version_check() -> Json<Value> {
     Json(json!({ "version": env!("CARGO_PKG_VERSION") }))
 }
 
+async fn chat_handler(Json(payload): Json<ChatRequest>) -> Json<ChatResponse> {
+    println!("Received chat request with {} messages", payload.messages.len());
+    
+    // test mock response rn
+    let response_text = format!("I received your message: '{}'", 
+        payload.messages.last().map(|m| m.content.as_str()).unwrap_or(""));
+
+    let response = ChatResponse {
+        message: Message {
+            role: Role::Assistant,
+            content: response_text,
+        },
+    };
+    Json(response)
+}
