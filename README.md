@@ -6,11 +6,24 @@ and exposes everything through an extensible assistant interface and pluggable m
 
 ## Status
 
-Early work in progress. Expect things to change and maybe break :D
+🚧 **Under Construction** 🚧
+Currently pivoting core architecture to Rust.
 
 ## Repo structure
 
-- `core/` – core daemon (models, RAG, mod runtime)
-- `desktop/` – desktop app (UI shell)
-- `mods/` – built-in/example mods
-- `docs/` – docs and design notes
+- `boomai-daemon/` – Core daemon (Rust binary, HTTP server)
+- `boomai-core/` – Core logic library (Rust)
+- `desktop/` – Desktop app (Tauri + React placeholder)
+- `mods/` – Built-in/example mods (placeholder)
+- `docs/` – Docs and design notes
+
+## Development
+
+### Prerequisites
+- Rust (stable)
+
+### Running the Core Daemon
+```bash
+cargo run -p boomai-daemon
+```
+Listens on `http://127.0.0.1:3030` by default.

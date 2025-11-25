@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "boomai-core",
+    "boomai-daemon",
+]
+resolver = "2"
+

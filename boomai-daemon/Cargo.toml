@@ -1,0 +1,12 @@
+[package]
+name = "boomai-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+boomai-core = { path = "../boomai-core" }
+axum = "0.7"
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
