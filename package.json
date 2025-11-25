@@ -1,0 +1,9 @@
+{
+  "name": "boomai",
+  "private": true,
+  "scripts": {
+    "core:dev": "cd core && npm run dev",
+    "core:build": "cd core && npm run build"
+  }
+}
+
