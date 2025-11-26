@@ -8,9 +8,10 @@ use std::sync::Arc;
 mod config;
 mod handlers;
 mod state;
+mod system;
 
 use config::Config;
-use handlers::{chat_handler, health_check, version_check};
+use handlers::{chat_handler, health_check, system_profile_handler, system_recommendation_handler, version_check};
 use state::AppState;
 
 #[tokio::main]
@@ -32,6 +33,8 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(health_check))
         .route("/version", get(version_check))
+        .route("/system/profile", get(system_profile_handler))
+        .route("/system/recommendation", get(system_recommendation_handler))
         .route("/chat", post(chat_handler))
         .with_state(state);
 

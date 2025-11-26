@@ -3,6 +3,7 @@ use boomai_core::{ChatRequest, ChatResponse, Message, Role};
 use serde_json::{json, Value};
 
 use crate::state::AppState;
+use crate::system::{get_recommendation, get_system_profile, EngineRecommendation, SystemProfile};
 
 pub async fn health_check() -> Json<Value> {
     Json(json!({ "status": "ok" }))
@@ -10,6 +11,15 @@ pub async fn health_check() -> Json<Value> {
 
 pub async fn version_check() -> Json<Value> {
     Json(json!({ "version": env!("CARGO_PKG_VERSION") }))
+}
+
+pub async fn system_profile_handler() -> Json<SystemProfile> {
+    Json(get_system_profile())
+}
+
+pub async fn system_recommendation_handler() -> Json<EngineRecommendation> {
+    let profile = get_system_profile();
+    Json(get_recommendation(&profile))
 }
 
 pub async fn chat_handler(
@@ -25,7 +35,7 @@ pub async fn chat_handler(
         Ok(response) => Json(response),
         Err(err) => {
             eprintln!("Error handling chat request: {}", err);
-            // Return an error message in the chat format for now
+            // error response
             Json(ChatResponse {
                 message: Message {
                     role: Role::System,
@@ -35,4 +45,3 @@ pub async fn chat_handler(
         }
     }
 }
-
