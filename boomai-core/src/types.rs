@@ -25,3 +25,30 @@ pub struct ChatResponse {
     pub message: Message,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModelConfig {
+    pub base_url: String,
+    pub api_key: Option<String>,
+    pub model: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AvailableLocalModel {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub size_gb: f64,
+    pub recommended_ram_gb: u32,
+    pub download_url: String,
+    pub local_port: u16,
+    pub runtime_type: String, // "ollama", "lm-studio", etc.
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InstalledLocalModel {
+    pub model_id: String,
+    pub install_path: String,
+    pub is_running: bool,
+    pub port: u16,
+    pub runtime_type: String,
+}

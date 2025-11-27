@@ -1,82 +1,117 @@
-import { useState } from "react";
-import { fetch } from "@tauri-apps/plugin-http";
+import { useState, useEffect } from "react";
+import { api, SystemProfile, Recommendation, ModelConfig } from "./lib/api";
+import { SystemCheck } from "./components/SystemCheck";
+import { ModelGallery } from "./components/ModelGallery";
+import { ConfigForm } from "./components/ConfigForm";
+import { ChatInterface } from "./components/ChatInterface";
 import "./App.css";
 
-interface Message {
-  role: "user" | "assistant" | "system";
-  content: string;
-}
-
 function App() {
-  const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(false);
+  // app state
+  const [hasConfigured, setHasConfigured] = useState(false);
+  const [step, setStep] = useState(1); // 1: Profile, 2: Engine Choice, 3: Local Gallery, 4: Config
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault();
-    if (!input.trim()) return;
+  // data state
+  const [profile, setProfile] = useState<SystemProfile | null>(null);
+  const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
+  const [config, setConfig] = useState<ModelConfig>({
+    base_url: "https://api.openai.com/v1",
+    model: "gpt-4o-mini",
+    api_key: "",
+  });
 
-    const userMsg: Message = { role: "user", content: input };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
-    setInput("");
-    setLoading(true);
-
-    try {
-      // fetching with tauri fetch
-      const response = await fetch("http://localhost:3030/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages: newMessages,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // data.message matches the ChatResponse structure from the daemon
-        setMessages([...newMessages, data.message]);
-      } else {
-        console.error("Failed to send message", response.status);
-        const errorMsg: Message = { role: "system", content: `Error: ${response.statusText}` };
-        setMessages([...newMessages, errorMsg]);
+  // check system profile on mount
+  useEffect(() => {
+    async function loadSystem() {
+      try {
+        const [pData, rData] = await Promise.all([
+          api.system.getProfile(),
+          api.system.getRecommendation(),
+        ]);
+        setProfile(pData);
+        setRecommendation(rData);
+      } catch (e) {
+        console.error("Failed to load system profile", e);
       }
-    } catch (err) {
-      console.error("Error:", err);
-      const errorMsg: Message = { role: "system", content: `Connection error: ${err}` };
-      setMessages([...newMessages, errorMsg]);
-    } finally {
-      setLoading(false);
     }
+    loadSystem();
+  }, []);
+
+  // nav state
+  const nextStep = () => setStep(prev => prev + 1);
+  const prevStep = () => setStep(prev => prev - 1);
+
+  // If already configured, go to chat
+
+  if (hasConfigured) {
+    return <ChatInterface />;
   }
 
   return (
-    <main className="container">
-      <h1>chat</h1>
-
-      <div style={{ marginBottom: "20px", border: "1px solid #ccc", padding: "10px", height: "300px", overflowY: "auto", textAlign: "left" }}>
-        {messages.map((msg, i) => (
-          <div key={i}>
-            <strong>{msg.role}:</strong> {msg.content}
-          </div>
-        ))}
-        {loading && <div>test</div>}
-      </div>
-
-      <form className="row" onSubmit={sendMessage}>
-        <input
-          id="greet-input"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type something"
-          disabled={loading}
+    <main className="container onboarding">
+      <h1>Welcome to Boomai</h1>
+      
+      {step === 1 && (
+        <SystemCheck 
+          profile={profile} 
+          recommendation={recommendation} 
+          onContinue={nextStep} 
         />
-        <button type="submit" disabled={loading}>
-          Send
-        </button>
-      </form>
+      )}
+
+      {step === 2 && (
+        <>
+          <div className="card">
+            <h3>Choose Your AI Engine</h3>
+            <div className="row">
+              <button 
+                type="button" 
+                onClick={() => {
+                  setConfig({
+                    base_url: "https://api.openai.com/v1",
+                    model: "gpt-4o-mini",
+                    api_key: ""
+                  });
+                  setStep(4);
+                }}
+              >
+                Cloud API (OpenAI)
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  setStep(3);
+                }}
+              >
+                Local Models (Private)
+              </button>
+            </div>
+          </div>
+
+          <div className="actions">
+            <button onClick={prevStep}>Back</button>
+          </div>
+        </>
+      )}
+
+      {step === 3 && (
+        <ModelGallery 
+          onBack={prevStep} 
+          onSelectModel={(modelConfig) => {
+            setConfig(modelConfig);
+            setStep(4); 
+          }}
+        />
+      )}
+
+      {step === 4 && (
+        <ConfigForm 
+          initialConfig={config} 
+          onBack={() => setStep(2)}
+          onComplete={() => setHasConfigured(true)} 
+        />
+      )}
+
     </main>
   );
 }

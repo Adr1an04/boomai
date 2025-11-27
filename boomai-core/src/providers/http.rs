@@ -12,11 +12,17 @@ pub struct HttpProvider {
 
 impl HttpProvider {
     pub fn new(base_url: String, api_key: Option<String>, model: String) -> Self {
+        // mac os build without proxy
+        let client = Client::builder()
+            .no_proxy() 
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
         Self {
             base_url,
             api_key,
             model,
-            client: Client::new(),
+            client,
         }
     }
 }
@@ -35,14 +41,17 @@ impl ModelProvider for HttpProvider {
         let mut request = self.client.post(&url).json(&body);
 
         if let Some(key) = &self.api_key {
-            request = request.header("Authorization", format!("Bearer {}", key));
+            if !key.is_empty() {
+                request = request.header("Authorization", format!("Bearer {}", key));
+            }
         }
 
         // parse
         let response = request.send().await?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("API request failed: {}", response.status()));
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!("API request failed: {} - {}", error_text, "Check your API key or local server status"));
         }
 
         let data: serde_json::Value = response.json().await?;
@@ -60,4 +69,3 @@ impl ModelProvider for HttpProvider {
         })
     }
 }
-

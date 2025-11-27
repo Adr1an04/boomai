@@ -3,16 +3,23 @@ use axum::{
     Router,
 };
 use boomai_core::{DummyProvider, ModelProvider};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 mod config;
 mod handlers;
 mod state;
 mod system;
+mod local;
 
 use config::Config;
-use handlers::{chat_handler, health_check, system_profile_handler, system_recommendation_handler, version_check};
+use handlers::{
+    chat_handler, config_local_available_models, config_local_install_model,
+    config_local_installed_models, config_local_uninstall_model, config_model_save,
+    config_model_test, health_check, system_profile_handler,
+    system_recommendation_handler, version_check,
+};
 use state::AppState;
+use local::LocalModelManager;
 
 #[tokio::main]
 async fn main() {
@@ -23,10 +30,12 @@ async fn main() {
     let config = Config::from_env();
 
     // Initialize provider - default to DummyProvider for now
-    // In the future, we can load this from config or env vars
     let provider: Arc<dyn ModelProvider> = Arc::new(DummyProvider);
+    let local_manager = LocalModelManager::new();
+
     let state = AppState {
-        model_provider: provider,
+        model_provider: Arc::new(RwLock::new(provider)),
+        local_manager,
     };
 
     // route set up for inital health and version checks
@@ -35,6 +44,12 @@ async fn main() {
         .route("/version", get(version_check))
         .route("/system/profile", get(system_profile_handler))
         .route("/system/recommendation", get(system_recommendation_handler))
+        .route("/config/model", post(config_model_save))
+        .route("/config/model/test", post(config_model_test))
+        .route("/config/local/available_models", get(config_local_available_models))
+        .route("/config/local/installed_models", get(config_local_installed_models))
+        .route("/config/local/install_model", post(config_local_install_model))
+        .route("/config/local/uninstall_model", post(config_local_uninstall_model))
         .route("/chat", post(chat_handler))
         .with_state(state);
 
