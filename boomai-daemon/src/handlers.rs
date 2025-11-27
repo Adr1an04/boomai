@@ -26,7 +26,7 @@ pub async fn system_recommendation_handler() -> Json<EngineRecommendation> {
 pub async fn config_model_test(
     Json(config): Json<ModelConfig>,
 ) -> Json<Value> {
-    println!("Model config : {:?}", config);
+    println!("Testing model config: {:?}", config);
 
     let provider = HttpProvider::new(
         config.base_url.clone(),
@@ -42,8 +42,8 @@ pub async fn config_model_test(
     };
 
     match provider.chat(test_req).await {
-        Ok(_) => Json(json!({ "status": "success", "message": "successful" })),
-        Err(e) => Json(json!({ "status": "error", "message": format!("failed: {}", e) })),
+        Ok(_) => Json(json!({ "status": "success", "message": "Connection successful" })),
+        Err(e) => Json(json!({ "status": "error", "message": format!("Connection failed: {}", e) })),
     }
 }
 
@@ -62,7 +62,7 @@ pub async fn config_model_save(
     // Acquire write lock and update the provider
     if let Ok(mut provider_lock) = state.model_provider.write() {
         *provider_lock = new_provider;
-        Json(json!({ "status": "success", "message": "Config saved" }))
+        Json(json!({ "status": "success", "message": "Configuration saved" }))
     } else {
         Json(json!({ "status": "error", "message": "Failed to acquire lock" }))
     }
@@ -132,6 +132,59 @@ pub async fn config_local_uninstall_model(
     }
 }
 
+// MCP Handlers
+
+pub async fn config_mcp_servers_list(
+    State(state): State<AppState>,
+) -> Json<Value> {
+    let servers = state.mcp_manager.list_clients().await;
+    Json(json!({ "servers": servers }))
+}
+
+pub async fn config_mcp_server_add(
+    State(state): State<AppState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Json<Value> {
+    let id = match payload["id"].as_str() {
+        Some(id) => id,
+        None => return Json(json!({ "status": "error", "message": "Missing server id" })),
+    };
+    
+    let command = match payload["command"].as_str() {
+        Some(cmd) => cmd,
+        None => return Json(json!({ "status": "error", "message": "Missing command" })),
+    };
+
+    let args_vec = match payload["args"].as_array() {
+        Some(arr) => arr.iter().filter_map(|v| v.as_str()).collect::<Vec<&str>>(),
+        None => vec![],
+    };
+
+    match state.mcp_manager.add_client(id.to_string(), command, &args_vec).await {
+        Ok(_) => Json(json!({ "status": "success", "message": format!("MCP server {} added", id) })),
+        Err(e) => Json(json!({ "status": "error", "message": format!("Failed to add server: {}", e) })),
+    }
+}
+
+pub async fn config_mcp_tools_list(
+    State(state): State<AppState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Json<Value> {
+    let server_id = match payload["server_id"].as_str() {
+        Some(id) => id,
+        None => return Json(json!({ "status": "error", "message": "Missing server_id" })),
+    };
+
+    if let Some(client) = state.mcp_manager.get_client(server_id).await {
+        match client.list_tools().await {
+            Ok(tools) => Json(serde_json::to_value(tools).unwrap_or(json!({ "error": "Serialization failed" }))),
+            Err(e) => Json(json!({ "status": "error", "message": format!("Failed to list tools: {}", e) })),
+        }
+    } else {
+        Json(json!({ "status": "error", "message": "Server not found" }))
+    }
+}
+
 pub async fn chat_handler(
     State(state): State<AppState>,
     Json(payload): Json<ChatRequest>,
@@ -161,7 +214,7 @@ pub async fn chat_handler(
         Ok(response) => Json(response),
         Err(err) => {
             eprintln!("Error handling chat request: {}", err);
-            // error response
+            // Return an error message in the chat format for now
             Json(ChatResponse {
                 message: Message {
                     role: Role::System,

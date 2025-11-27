@@ -10,12 +10,16 @@ export function ModelGallery({ onBack, onSelectModel }: Props) {
   const [available, setAvailable] = useState<AvailableLocalModel[]>([]);
   const [installed, setInstalled] = useState<InstalledLocalModel[]>([]);
   const [installStatus, setInstallStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadModels();
   }, []);
 
   const loadModels = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const [availData, instData] = await Promise.all([
         api.config.local.getAvailable(),
@@ -23,8 +27,12 @@ export function ModelGallery({ onBack, onSelectModel }: Props) {
       ]);
       setAvailable(availData.models || []);
       setInstalled(instData.models || []);
-    } catch (e) {
+    } catch (e: any) {
+      const errorMsg = e?.message || String(e) || "Failed to connect to daemon. Make sure it's running on port 3046.";
+      setError(errorMsg);
       console.error("Failed to load models", e);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -59,7 +67,7 @@ export function ModelGallery({ onBack, onSelectModel }: Props) {
   const handleSelect = (model: InstalledLocalModel) => {
     onSelectModel({
       base_url: `http://localhost:${model.port}/v1`,
-      model: model.model_id.split(':')[0],
+      model: model.model_id, // Use full model name like "smollm:135m"
       api_key: "",
     });
   };
@@ -69,43 +77,62 @@ export function ModelGallery({ onBack, onSelectModel }: Props) {
       <div className="card">
         <h3>Local Model Management</h3>
 
-        {installed.length > 0 && (
-          <div className="section">
-            <h4>Installed Models</h4>
-            {installed.map((model) => (
-              <div key={model.model_id} className="model-item installed">
-                <div>
-                  <strong>{model.model_id}</strong>
-                  {model.is_running && <span className="status running">Running</span>}
-                </div>
-                <div className="button-group">
-                   <button onClick={() => handleSelect(model)}>Use This</button>
-                   <button className="danger" onClick={() => handleUninstall(model.model_id)}>Uninstall</button>
-                </div>
-              </div>
-            ))}
+        {error && (
+          <div className="error-message" style={{ background: "#ffebee", color: "#c62828", padding: "1rem", borderRadius: "8px", marginBottom: "1rem" }}>
+            <strong>Connection Error:</strong> {error}
+            <br />
+            <small>Make sure the daemon is running: <code>export BOOMAI_PORT=3046 && cargo run -p boomai-daemon</code></small>
           </div>
         )}
 
-        <div className="section">
-          <h4>Available Models</h4>
-          {available.map((model) => (
-            <div key={model.id} className="model-item">
-              <div>
-                <strong>{model.name}</strong>
-                <p>{model.description}</p>
-                <small>Size: {model.size_gb}GB | RAM: {model.recommended_ram_gb}GB</small>
+        {loading && <p>Loading models...</p>}
+
+        {!loading && !error && (
+          <>
+            {installed.length > 0 && (
+              <div className="section">
+                <h4>Installed Models</h4>
+                {installed.map((model) => (
+                  <div key={model.model_id} className="model-item installed">
+                    <div>
+                      <strong>{model.model_id}</strong>
+                      {model.is_running && <span className="status running">Running</span>}
+                    </div>
+                    <div className="button-group">
+                       <button onClick={() => handleSelect(model)}>Use This</button>
+                       <button className="danger" onClick={() => handleUninstall(model.model_id)}>Uninstall</button>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <button onClick={() => handleInstall(model.id)}>Install</button>
+            )}
+
+            <div className="section">
+              <h4>Available Models</h4>
+              {available.length === 0 ? (
+                <p>No models available</p>
+              ) : (
+                available.map((model) => (
+                  <div key={model.id} className="model-item">
+                    <div>
+                      <strong>{model.name}</strong>
+                      <p>{model.description}</p>
+                      <small>Size: {model.size_gb}GB | RAM: {model.recommended_ram_gb}GB</small>
+                    </div>
+                    <button onClick={() => handleInstall(model.id)}>Install</button>
+                  </div>
+                ))
+              )}
             </div>
-          ))}
-        </div>
+          </>
+        )}
 
         {installStatus && <p className="status-message">{installStatus}</p>}
       </div>
 
       <div className="actions">
         <button onClick={onBack}>Back</button>
+        {error && <button onClick={loadModels}>Retry Connection</button>}
       </div>
     </>
   );

@@ -10,16 +10,18 @@ mod handlers;
 mod state;
 mod system;
 mod local;
+mod mcp;
 
 use config::Config;
 use handlers::{
     chat_handler, config_local_available_models, config_local_install_model,
-    config_local_installed_models, config_local_uninstall_model, config_model_save,
-    config_model_test, health_check, system_profile_handler,
-    system_recommendation_handler, version_check,
+    config_local_installed_models, config_local_uninstall_model, config_mcp_server_add,
+    config_mcp_servers_list, config_mcp_tools_list, config_model_save, config_model_test,
+    health_check, system_profile_handler, system_recommendation_handler, version_check,
 };
 use state::AppState;
 use local::LocalModelManager;
+use mcp::manager::McpManager;
 
 #[tokio::main]
 async fn main() {
@@ -30,12 +32,15 @@ async fn main() {
     let config = Config::from_env();
 
     // Initialize provider - default to DummyProvider for now
+    // Wrap in RwLock for dynamic updates
     let provider: Arc<dyn ModelProvider> = Arc::new(DummyProvider);
     let local_manager = LocalModelManager::new();
+    let mcp_manager = McpManager::new();
 
     let state = AppState {
         model_provider: Arc::new(RwLock::new(provider)),
         local_manager,
+        mcp_manager,
     };
 
     // route set up for inital health and version checks
@@ -50,6 +55,9 @@ async fn main() {
         .route("/config/local/installed_models", get(config_local_installed_models))
         .route("/config/local/install_model", post(config_local_install_model))
         .route("/config/local/uninstall_model", post(config_local_uninstall_model))
+        .route("/config/mcp/servers", get(config_mcp_servers_list))
+        .route("/config/mcp/server/add", post(config_mcp_server_add))
+        .route("/config/mcp/tools", post(config_mcp_tools_list))
         .route("/chat", post(chat_handler))
         .with_state(state);
 

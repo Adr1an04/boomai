@@ -14,6 +14,7 @@ function App() {
   // data state
   const [profile, setProfile] = useState<SystemProfile | null>(null);
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
+  const [systemError, setSystemError] = useState<string | null>(null);
   const [config, setConfig] = useState<ModelConfig>({
     base_url: "https://api.openai.com/v1",
     model: "gpt-4o-mini",
@@ -23,6 +24,7 @@ function App() {
   // check system profile on mount
   useEffect(() => {
     async function loadSystem() {
+      setSystemError(null);
       try {
         const [pData, rData] = await Promise.all([
           api.system.getProfile(),
@@ -30,7 +32,9 @@ function App() {
         ]);
         setProfile(pData);
         setRecommendation(rData);
-      } catch (e) {
+      } catch (e: any) {
+        const errorMsg = e?.message || String(e) || "Failed to connect to daemon";
+        setSystemError(errorMsg);
         console.error("Failed to load system profile", e);
       }
     }
@@ -50,6 +54,18 @@ function App() {
   return (
     <main className="container onboarding">
       <h1>Welcome to Boomai</h1>
+      
+      {systemError && (
+        <div className="card" style={{ background: "#ffebee", border: "2px solid #c62828" }}>
+          <h3 style={{ color: "#c62828" }}>Connection Error</h3>
+          <p>{systemError}</p>
+          <p><strong>Make sure the daemon is running:</strong></p>
+          <code style={{ display: "block", padding: "0.5rem", background: "#111111", borderRadius: "4px", marginTop: "0.5rem" }}>
+            export BOOMAI_PORT=3046 && cargo run -p boomai-daemon
+          </code>
+          <button onClick={() => window.location.reload()} style={{ marginTop: "1rem" }}>Retry</button>
+        </div>
+      )}
       
       {step === 1 && (
         <SystemCheck 

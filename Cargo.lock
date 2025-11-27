@@ -356,6 +356,8 @@ dependencies = [
  "serde_json",
  "sysinfo",
  "tokio",
+ "tokio-util",
+ "uuid",
 ]
 
 [[package]]

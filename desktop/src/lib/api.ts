@@ -42,16 +42,22 @@ export interface ChatMessage {
   content: string;
 }
 
-const API_BASE = "http://localhost:3030"; // Dynamic port discovery to be added later
+const API_BASE = "http://localhost:3046"; // Daemon running on port 3046
 
 export const api = {
   system: {
     getProfile: async (): Promise<SystemProfile> => {
       const res = await fetch(`${API_BASE}/system/profile`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText || "Failed to fetch system profile"}`);
+      }
       return res.json();
     },
     getRecommendation: async (): Promise<Recommendation> => {
       const res = await fetch(`${API_BASE}/system/recommendation`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText || "Failed to fetch recommendation"}`);
+      }
       return res.json();
     },
   },
@@ -77,10 +83,16 @@ export const api = {
     local: {
       getAvailable: async (): Promise<{ models: AvailableLocalModel[] }> => {
         const res = await fetch(`${API_BASE}/config/local/available_models`);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText || "Failed to fetch available models"}`);
+        }
         return res.json();
       },
       getInstalled: async (): Promise<{ models: InstalledLocalModel[] }> => {
         const res = await fetch(`${API_BASE}/config/local/installed_models`);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText || "Failed to fetch installed models"}`);
+        }
         return res.json();
       },
       install: async (modelId: string): Promise<{ status: string; message: string }> => {
