@@ -9,6 +9,7 @@ export interface SystemProfile {
 
 export interface Recommendation {
   recommended_engine: "Local" | "Cloud";
+  recommended_model?: string;
   reason: string;
 }
 
@@ -54,7 +55,7 @@ export interface ChatMessage {
   content: string;
 }
 
-const API_BASE = "http://localhost:3046"; // Daemon running on port 3046
+const API_BASE = "http://localhost:3030"; // Daemon running on port 3030
 
 export const api = {
   system: {

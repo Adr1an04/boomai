@@ -46,6 +46,26 @@ pub fn get_available_models() -> Vec<AvailableLocalModel> {
             local_port: 11434,
             runtime_type: "ollama".to_string(),
         },
+        AvailableLocalModel {
+            id: "qwen3:32b".to_string(),
+            name: "Qwen3 32B".to_string(),
+            description: "Advanced reasoning model with thinking/non-thinking modes. Superior performance on math, coding, and complex tasks".to_string(),
+            size_gb: 65.6, // 32.8B params * ~2 bytes/param (BF16)
+            recommended_ram_gb: 64, // Substantial RAM requirement for 32B model
+            download_url: "ollama:qwen3:32b".to_string(),
+            local_port: 11434,
+            runtime_type: "ollama".to_string(),
+        },
+        AvailableLocalModel {
+            id: "gpt-oss:20b".to_string(),
+            name: "GPT-OSS 20B".to_string(),
+            description: "OpenAI's open-weight model with configurable reasoning levels. Excellent for agentic tasks, chain-of-thought reasoning, and complex problem solving".to_string(),
+            size_gb: 44.0, // 22B params with MXFP4 quantization
+            recommended_ram_gb: 16, // Can run within 16GB memory
+            download_url: "ollama:gpt-oss:20b".to_string(),
+            local_port: 11434,
+            runtime_type: "ollama".to_string(),
+        },
     ]
 }
 

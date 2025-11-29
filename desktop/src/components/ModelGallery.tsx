@@ -28,7 +28,7 @@ export function ModelGallery({ onBack, onSelectModel }: Props) {
       setAvailable(availData.models || []);
       setInstalled(instData.models || []);
     } catch (e: any) {
-      const errorMsg = e?.message || String(e) || "Failed to connect to daemon. Make sure it's running on port 3046.";
+      const errorMsg = e?.message || String(e) || "Failed to connect to daemon. Make sure it's running on port 3030.";
       setError(errorMsg);
       console.error("Failed to load models", e);
     } finally {
@@ -81,7 +81,7 @@ export function ModelGallery({ onBack, onSelectModel }: Props) {
           <div className="error-message" style={{ background: "#ffebee", color: "#c62828", padding: "1rem", borderRadius: "8px", marginBottom: "1rem" }}>
             <strong>Connection Error:</strong> {error}
             <br />
-            <small>Make sure the daemon is running: <code>export BOOMAI_PORT=3046 && cargo run -p boomai-daemon</code></small>
+            <small>Make sure the daemon is running: <code>export BOOMAI_PORT=3030 && cargo run -p boomai-daemon</code></small>
           </div>
         )}
 

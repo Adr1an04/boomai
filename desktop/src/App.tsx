@@ -62,7 +62,7 @@ function App() {
           <p>{systemError}</p>
           <p><strong>Make sure the daemon is running:</strong></p>
           <code style={{ display: "block", padding: "0.5rem", background: "#111111", borderRadius: "4px", marginTop: "0.5rem" }}>
-            export BOOMAI_PORT=3046 && cargo run -p boomai-daemon
+            export BOOMAI_PORT=3030 && cargo run -p boomai-daemon
           </code>
           <button onClick={() => window.location.reload()} style={{ marginTop: "1rem" }}>Retry</button>
         </div>

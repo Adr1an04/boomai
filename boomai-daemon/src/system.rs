@@ -21,6 +21,7 @@ pub enum EngineType {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EngineRecommendation {
     pub recommended_engine: EngineType,
+    pub recommended_model: Option<String>,
     pub reason: String,
 }
 
@@ -57,19 +58,35 @@ pub fn get_system_profile() -> SystemProfile {
 }
 
 pub fn get_recommendation(profile: &SystemProfile) -> EngineRecommendation {
-    // simple heuristic for recommendation
-    
-    let is_apple_silicon = profile.os_name.to_lowercase().contains("macos") && profile.architecture == "aarch64";
-    let has_enough_ram = profile.total_memory_gb >= 16;
+    // Enhanced recommendation logic based on system capabilities
 
-    if is_apple_silicon || has_enough_ram {
+    let is_apple_silicon = profile.os_name.to_lowercase().contains("macos") && profile.architecture == "aarch64";
+    let has_high_end_ram = profile.total_memory_gb >= 64; // For Qwen3-32B
+    let has_good_ram = profile.total_memory_gb >= 16;     // For smaller models
+    let has_minimal_ram = profile.total_memory_gb >= 8;   // For TinyLlama
+
+    if is_apple_silicon || has_high_end_ram {
         EngineRecommendation {
             recommended_engine: EngineType::Local,
-            reason: format!("Your system has decent specs ({}GB RAM). Local AI should work well.", profile.total_memory_gb),
+            recommended_model: Some("qwen3:32b".to_string()),
+            reason: format!("Your system has excellent specs ({}GB RAM). Qwen3-32B is recommended for superior reasoning, math, and coding performance.", profile.total_memory_gb),
+        }
+    } else if has_good_ram {
+        EngineRecommendation {
+            recommended_engine: EngineType::Local,
+            recommended_model: Some("gpt-oss:20b".to_string()),
+            reason: format!("Your system has good specs ({}GB RAM). GPT-OSS-20B provides excellent reasoning and agentic capabilities.", profile.total_memory_gb),
+        }
+    } else if has_minimal_ram {
+        EngineRecommendation {
+            recommended_engine: EngineType::Local,
+            recommended_model: Some("tinyllama".to_string()),
+            reason: format!("Your system has basic specs ({}GB RAM). TinyLlama works well for testing and simple tasks.", profile.total_memory_gb),
         }
     } else {
         EngineRecommendation {
             recommended_engine: EngineType::Cloud,
+            recommended_model: None,
             reason: format!("Your system has limited resources ({}GB RAM). Cloud API is recommended for best performance.", profile.total_memory_gb),
         }
     }
