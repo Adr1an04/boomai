@@ -356,6 +356,7 @@ dependencies = [
  "boomai-core",
  "chrono",
  "dirs 5.0.1",
+ "evalexpr",
  "serde",
  "serde_json",
  "sysinfo",
@@ -1020,6 +1021,12 @@ dependencies = [
  "libc",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "evalexpr"
+version = "13.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25929004897f2bbab309121a60400d36992f6d911d09baa6c172f6cc55706601"
 
 [[package]]
 name = "event-listener"

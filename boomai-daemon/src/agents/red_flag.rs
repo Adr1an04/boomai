@@ -4,7 +4,7 @@ pub struct RedFlagFilter {
 
 impl RedFlagFilter {
     pub fn new() -> Self {
-        Self { max_token_length: 700 } `// Example threshold
+        Self { max_token_length: 700 } // Example threshold
     }
 
     pub fn is_flagged(&self, response: &str) -> bool {

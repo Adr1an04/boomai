@@ -34,5 +34,15 @@ impl McpManager {
         let clients = self.clients.read().await;
         clients.keys().cloned().collect()
     }
+
+    pub async fn shutdown_all(&self) {
+        let clients = self.clients.read().await;
+        for (id, client) in clients.iter() {
+            println!("Shutting down MCP client: {}", id);
+            if let Err(e) = client.shutdown().await {
+                eprintln!("Failed to shutdown MCP client {}: {}", id, e);
+            }
+        }
+    }
 }
 

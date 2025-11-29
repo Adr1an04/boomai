@@ -11,7 +11,7 @@ use uuid::Uuid;
 use super::types::{JsonRpcId, JsonRpcRequest, JsonRpcResponse, McpInitializeParams, McpCapabilities, McpClientInfo, McpInitializeResult};
 
 pub struct McpClient {
-    server_process: Child,
+    server_process: Arc<Mutex<Child>>, // Wrapped in Mutex for interior mutability
     request_tx: mpsc::Sender<JsonRpcRequest>,
     pending_requests: Arc<Mutex<HashMap<String, mpsc::Sender<JsonRpcResponse>>>>,
 }
@@ -23,6 +23,7 @@ impl McpClient {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .kill_on_drop(true) // Ensure cleanup on drop
             .spawn()?;
 
         let stdin = child.stdin.take().ok_or("Failed to open stdin")?;
@@ -74,10 +75,16 @@ impl McpClient {
         });
 
         Ok(Self {
-            server_process: child,
+            server_process: Arc::new(Mutex::new(child)),
             request_tx,
             pending_requests,
         })
+    }
+
+    pub async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut child = self.server_process.lock().await;
+        child.kill().await?;
+        Ok(())
     }
 
     pub async fn send_request(&self, method: &str, params: Option<Value>) -> Result<Value, Box<dyn std::error::Error>> {

@@ -66,6 +66,7 @@ async fn main() {
     // Managers
     let local_manager = LocalModelManager::new();
     let mcp_manager = McpManager::new();
+    let mcp_manager_for_shutdown = mcp_manager.clone();
 
     // Initialize Agents with access to the dynamic provider
     let decomposer_agent = Arc::new(DecomposerAgent::new(provider_lock.clone()));
@@ -133,5 +134,36 @@ async fn main() {
             );
             std::process::exit(1);
         });
-    axum::serve(listener, app).await.unwrap();
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(mcp_manager_for_shutdown))
+        .await
+        .unwrap();
+}
+
+async fn shutdown_signal(mcp_manager: McpManager) {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    println!("Signal received, starting graceful shutdown...");
+    mcp_manager.shutdown_all().await;
 }

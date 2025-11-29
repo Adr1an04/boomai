@@ -67,12 +67,13 @@ impl MakerOrchestrator {
     }
 
     async fn run_complex_flow(&self, initial_req: ChatRequest) -> anyhow::Result<ChatResponse> {
-        println!("[MAKER] Executing COMPLEX flow (Full MDAP)...");
+        println!("[MAKER] Executing COMPLEX flow (Parallel MDAP)...");
         let mut history = initial_req.messages.clone();
         let goal = history.last().map(|m| m.content.clone()).unwrap_or_default();
         
-        let voting = VotingMechanism::new(2); // k=2 (ahead by 2)
-        let red_flag = RedFlagFilter::new();
+        let _voting = VotingMechanism::new(2); // k=2 (ahead by 2)
+        // RedFlagFilter temporarily disabled to reduce false positives with TinyLlama
+        // let _red_flag = RedFlagFilter::new();
 
         println!("[MAKER] Starting orchestration for goal: {}", goal);
 
@@ -82,21 +83,14 @@ impl MakerOrchestrator {
         loop {
             step_count += 1;
             if step_count > self.max_steps {
-                return Ok(ChatResponse {
-                    message: Message {
-                        role: Role::Assistant,
-                        content: format!("Stopped after {} steps. Last state: {}", self.max_steps, final_answer),
-                    },
-                    status: ExecutionStatus::Done, // Or failed?
-                    maker_context: None,
-                });
+                println!("[MAKER] Max steps reached ({}), terminating.", self.max_steps);
+                break;
             }
 
             // 0. INTERROGATION (Stop Condition)
-            // Check if we are done BEFORE decomposing further
             if step_count > 1 {
                 let mut check_messages = Vec::new();
-                check_messages.push(Message { role: Role::System, content: "Review the history. Is the goal fully achieved?".to_string() });
+                check_messages.push(Message { role: Role::System, content: "Review the history. Is the goal fully achieved? Output 'SOLVED' if yes, 'CONTINUE' if no.".to_string() });
                 check_messages.push(Message { role: Role::User, content: format!("Goal: {}\nHistory:\n{}", goal, history.iter().skip(1).map(|m| format!("{:?}: {}", m.role, m.content)).collect::<Vec<_>>().join("\n")) });
                 
                 let check_req = ChatRequest { messages: check_messages };
@@ -114,15 +108,13 @@ impl MakerOrchestrator {
                 }
             }
 
-            // 1. DECOMPOSITION: Ask Decomposer for the NEXT step
-            // We construct a special prompt for the decomposer
+            // 1. DECOMPOSITION
             let mut decompose_messages = Vec::new();
             decompose_messages.push(Message {
                 role: Role::System,
-                content: "You are the Decomposer. Your job is to determine the single immediate next step to solve the user's goal, given the history of steps taken so far. If the goal is fully achieved, output 'DONE'. Otherwise, output just the instruction for the next step.".to_string(),
+                content: "You are the Decomposer. Output the SINGLE immediate next step to solve the goal. Be concise.".to_string(),
             });
             
-            // Add context
             decompose_messages.push(Message {
                 role: Role::User,
                 content: format!("Goal: {}\n\nHistory of steps taken:\n{}\n\nWhat is the next step?", 
@@ -144,15 +136,14 @@ impl MakerOrchestrator {
             println!("[MAKER] Step {}: {}", step_count, next_step);
 
             if next_step.eq_ignore_ascii_case("DONE") {
-                println!("[MAKER] Task complete.");
+                println!("[MAKER] Task complete (Decomposer signaled DONE).");
                 break;
             }
 
-            // 2. EXECUTION (with Red-Flagging and Voting)
+            // 2. PARALLEL EXECUTION (with Voting)
             
-            let mut candidates = Vec::new();
-            let attempts = 3; // Reduced attempts
-            let needed_candidates = 1; // Reduced for MVP/TinyLlama
+            let attempts = 3; // Number of parallel candidates
+            let needed_candidates = 1; // Reduced for MVP, usually would be 3 for voting
             
             // Construct the prompt for the worker
             let mut worker_messages = history.clone();
@@ -161,52 +152,52 @@ impl MakerOrchestrator {
                 content: format!("Execute this step: {}", next_step),
             });
 
-            // Parallel generation would be better, but sequential for MVP
-            for i in 0..attempts {
-                if candidates.len() >= needed_candidates {
-                    break;
-                }
-
-                // Call the provider (via RouterAgent or directly)
-                // We use RouterAgent as a generic "Solver" here
-                let worker_req = ChatRequest { messages: worker_messages.clone() };
-                let resp = self.state.router_agent.handle_chat(worker_req, boomai_core::AgentContext { 
-                    task_id: "orch".to_string(), 
-                    step_number: step_count,
-                    depth: 0,
-                    max_depth: 5,
-                    maker_context: None,
-                }).await;
+            let mut handles = Vec::new();
+            
+            // Spawn parallel tasks
+            for _ in 0..attempts {
+                let router_agent = self.state.router_agent.clone();
+                let req = ChatRequest { messages: worker_messages.clone() };
                 
-                if let Ok(r) = resp {
-                    let content = r.message.content;
-                    
-                    // RED FLAG FILTER - Relaxed for MVP
-                    // if red_flag.is_flagged(&content) {
-                    //     println!("[MAKER] Red flag triggered on attempt {}. Discarding.", i);
-                    //     continue;
-                    // }
-                    
-                    candidates.push(content);
+                let handle = tokio::spawn(async move {
+                    router_agent.handle_chat(req, boomai_core::AgentContext { 
+                        task_id: "orch_parallel".to_string(), 
+                        step_number: 0,
+                        depth: 0,
+                        max_depth: 5,
+                        maker_context: None,
+                    }).await
+                });
+                handles.push(handle);
+            }
+
+            // Collect results
+            let mut candidates = Vec::new();
+            for handle in handles {
+                if let Ok(Ok(resp)) = handle.await {
+                    candidates.push(resp.message.content);
+                    // Early exit optimization could go here if we just need *any* valid answer
+                    if candidates.len() >= needed_candidates {
+                        // In a real system we might cancel other tasks, but here we just stop collecting
+                        // Note: tasks keep running in background until completion or cancellation
+                    }
                 }
             }
 
             if candidates.is_empty() {
-                 // Fallback instead of error
                  println!("[MAKER] Failed to generate candidates. Skipping step.");
                  candidates.push("Failed to execute step.".to_string());
             }
 
             // 3. VOTING
-            let winner = candidates[0].clone(); // Simple selection for now
+            let winner = _voting.vote(candidates.clone()).unwrap_or_else(|| candidates[0].clone());
             println!("[MAKER] Voted winner: {:.50}...", winner);
 
             // 4. VERIFICATION
-            // Ask Verifier if this result is good
             let mut verify_messages = Vec::new();
             verify_messages.push(Message {
                 role: Role::System,
-                content: "You are the Verifier. Check if the following Result correctly solves the Step. If yes, output 'CORRECT'. If no, output 'INCORRECT'.".to_string()
+                content: "Verify the result. Output 'CORRECT' if it reasonably addresses the step. Output 'INCORRECT' otherwise.".to_string()
             });
             verify_messages.push(Message {
                 role: Role::User,
@@ -224,7 +215,6 @@ impl MakerOrchestrator {
             
             if verify_resp.message.content.to_uppercase().contains("CORRECT") {
                 println!("[MAKER] Step verified.");
-                // Add to history
                 history.push(Message { role: Role::Assistant, content: format!("Step: {}\nResult: {}", next_step, winner) });
                 final_answer = winner;
             } else {
