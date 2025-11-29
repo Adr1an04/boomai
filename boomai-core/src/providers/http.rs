@@ -66,6 +66,8 @@ impl ModelProvider for HttpProvider {
                 role: Role::Assistant,
                 content: content.to_string(),
             },
+            status: crate::types::ExecutionStatus::Done,
+            maker_context: None,
         })
     }
 }

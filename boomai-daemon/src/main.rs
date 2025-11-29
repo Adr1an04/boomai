@@ -1,9 +1,10 @@
-use axum::{
+    use axum::{
     routing::{get, post},
     Router,
 };
-use boomai_core::{DummyProvider, ModelProvider};
+use boomai_core::{DummyProvider, HttpProvider, ModelProvider};
 use std::sync::{Arc, RwLock};
+use tokio::sync::RwLock as TokioRwLock;
 
 mod config;
 mod handlers;
@@ -11,39 +12,97 @@ mod state;
 mod system;
 mod local;
 mod mcp;
+mod agents;
+mod config_persistence;
 
 use config::Config;
 use handlers::{
     chat_handler, config_local_available_models, config_local_install_model,
     config_local_installed_models, config_local_uninstall_model, config_mcp_server_add,
     config_mcp_servers_list, config_mcp_tools_list, config_model_save, config_model_test,
+    config_model_reload, config_model_rollback,
     health_check, system_profile_handler, system_recommendation_handler, version_check,
 };
 use state::AppState;
 use local::LocalModelManager;
 use mcp::manager::McpManager;
+use agents::decomposer::DecomposerAgent;
+use agents::router::RouterAgent;
+use agents::verifier::VerifierAgent;
+use agents::classifier::ClassifierAgent;
+use agents::calculator::CalculatorAgent;
+use agents::interrogator::InterrogatorAgent;
+use config_persistence::{load_config, DaemonConfigStore, config_exists, save_config};
 
 #[tokio::main]
 async fn main() {
-    // log test
     println!("Boomai core daemon (Rust) starting...");
 
-    // Load config
-    let config = Config::from_env();
+    // Load persistent configuration
+    let config_store = match load_config().await {
+        Ok(store) => {
+            println!("Loaded configuration from disk");
+            store
+        }
+        Err(e) => {
+            eprintln!("Failed to load configuration, using defaults: {}", e);
+            let default_config = boomai_core::ModelConfig {
+                base_url: "http://127.0.0.1:11434/v1".to_string(),
+                api_key: None,
+                model: "tinyllama".to_string(),
+            };
+            DaemonConfigStore::new(default_config)
+        }
+    };
 
-    // Initialize provider - default to DummyProvider for now
-    // Wrap in RwLock for dynamic updates
-    let provider: Arc<dyn ModelProvider> = Arc::new(DummyProvider);
+    // Initialize provider with loaded config
+    let provider: Arc<dyn ModelProvider> = Arc::new(HttpProvider::new(
+        config_store.active_config.base_url.clone(),
+        config_store.active_config.api_key.clone(),
+        config_store.active_config.model.clone(),
+    ));
+    let provider_lock = Arc::new(RwLock::new(provider.clone()));
+
+    // Managers
     let local_manager = LocalModelManager::new();
     let mcp_manager = McpManager::new();
 
+    // Initialize Agents with access to the dynamic provider
+    let decomposer_agent = Arc::new(DecomposerAgent::new(provider_lock.clone()));
+    let router_agent = Arc::new(RouterAgent::new(provider_lock.clone()));
+    let verifier_agent = Arc::new(VerifierAgent::new(provider_lock.clone()));
+    let classifier_agent = Arc::new(ClassifierAgent::new(provider_lock.clone()));
+    let calculator_agent = Arc::new(CalculatorAgent::new(provider_lock.clone()));
+    let interrogator_agent = Arc::new(InterrogatorAgent::new(provider_lock.clone()));
+
+    // Config store uses Tokio RwLock for async access
+    let config_store_lock = Arc::new(TokioRwLock::new(config_store));
+
     let state = AppState {
-        model_provider: Arc::new(RwLock::new(provider)),
+        config_store: config_store_lock.clone(),
+        model_provider: provider_lock,
         local_manager,
         mcp_manager,
+        decomposer_agent,
+        router_agent,
+        verifier_agent,
+        classifier_agent,
+        calculator_agent,
+        interrogator_agent,
     };
 
-    // route set up for inital health and version checks
+    // Save initial config if it didn't exist (to bootstrap the file)
+    if !config_exists().await {
+        let store = config_store_lock.read().await;
+        if let Err(e) = save_config(&store).await {
+            eprintln!("Failed to save initial config: {}", e);
+        }
+    }
+
+    // Load server config (port, etc.)
+    let config = Config::from_env();
+
+    // route set up
     let app = Router::new()
         .route("/health", get(health_check))
         .route("/version", get(version_check))
@@ -51,6 +110,8 @@ async fn main() {
         .route("/system/recommendation", get(system_recommendation_handler))
         .route("/config/model", post(config_model_save))
         .route("/config/model/test", post(config_model_test))
+        .route("/config/model/reload", post(config_model_reload))
+        .route("/config/model/rollback/:index", post(config_model_rollback))
         .route("/config/local/available_models", get(config_local_available_models))
         .route("/config/local/installed_models", get(config_local_installed_models))
         .route("/config/local/install_model", post(config_local_install_model))

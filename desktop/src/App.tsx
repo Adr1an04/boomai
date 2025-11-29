@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { api, SystemProfile, Recommendation, ModelConfig } from "./lib/api";
 import { SystemCheck } from "./components/SystemCheck";
 import { ModelGallery } from "./components/ModelGallery";
+import { McpServerGallery } from "./components/McpServerGallery";
 import { ConfigForm } from "./components/ConfigForm";
 import { ChatInterface } from "./components/ChatInterface";
 import "./App.css";
@@ -9,7 +10,7 @@ import "./App.css";
 function App() {
   // app state
   const [hasConfigured, setHasConfigured] = useState(false);
-  const [step, setStep] = useState(1); // 1: Profile, 2: Engine Choice, 3: Local Gallery, 4: Config
+  const [step, setStep] = useState(1); // 1: Profile, 2: Engine Choice, 3: Local Gallery, 4: MCP Gallery, 5: Config
 
   // data state
   const [profile, setProfile] = useState<SystemProfile | null>(null);
@@ -88,7 +89,7 @@ function App() {
                     model: "gpt-4o-mini",
                     api_key: ""
                   });
-                  setStep(4);
+                  setStep(5);
                 }}
               >
                 Cloud API (OpenAI)
@@ -101,6 +102,9 @@ function App() {
               >
                 Local Models (Private)
               </button>
+            </div>
+            <div style={{ marginTop: "1rem", textAlign: "center" }}>
+               <button onClick={() => setStep(4)} style={{ background: "#4a4a4a" }}>Manage MCP Tools</button>
             </div>
           </div>
 
@@ -115,12 +119,16 @@ function App() {
           onBack={prevStep} 
           onSelectModel={(modelConfig) => {
             setConfig(modelConfig);
-            setStep(4); 
+            setStep(5); 
           }}
         />
       )}
 
       {step === 4 && (
+        <McpServerGallery onBack={() => setStep(2)} />
+      )}
+
+      {step === 5 && (
         <ConfigForm 
           initialConfig={config} 
           onBack={() => setStep(2)}

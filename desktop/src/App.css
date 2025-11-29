@@ -272,9 +272,20 @@ button[type="button"]:hover {
     border-color: #646cff;
   }
 
-  .model-item p {
-    color: #aaa;
-  }
+.tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mcp-server-item {
+  background: #2a2a40;
+  border: 1px solid #444;
+}
+
+button[style*="background: #4a4a4a"]:hover {
+  background-color: #5a5a5a !important;
+}
 
   .model-item small {
     color: #888;

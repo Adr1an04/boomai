@@ -18,6 +18,8 @@ impl ModelProvider for DummyProvider {
                 role: Role::Assistant,
                 content: format!("(dummy) I received: {}", last),
             },
+            status: crate::types::ExecutionStatus::Done,
+            maker_context: None,
         })
     }
 }
