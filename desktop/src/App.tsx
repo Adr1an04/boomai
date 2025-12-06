@@ -57,11 +57,11 @@ function App() {
       <h1>Welcome to Boomai</h1>
       
       {systemError && (
-        <div className="card" style={{ background: "#ffebee", border: "2px solid #c62828" }}>
-          <h3 style={{ color: "#c62828" }}>Connection Error</h3>
+        <div className="card" style={{ background: "#c78c95ff", border: "2px solid #c62828", color: "#000000" }}>
+          <h3 style={{ color: "#000000" }}>Connection Error</h3>
           <p>{systemError}</p>
           <p><strong>Make sure the daemon is running:</strong></p>
-          <code style={{ display: "block", padding: "0.5rem", background: "#111111", borderRadius: "4px", marginTop: "0.5rem" }}>
+          <code style={{ display: "block", padding: "0.5rem", background: "#111111", color: "#ffffff", borderRadius: "4px", marginTop: "0.5rem" }}>
             export BOOMAI_PORT=3030 && cargo run -p boomai-daemon
           </code>
           <button onClick={() => window.location.reload()} style={{ marginTop: "1rem" }}>Retry</button>

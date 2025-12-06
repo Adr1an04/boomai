@@ -13,13 +13,11 @@ impl MakerOrchestrator {
     pub fn new(state: Arc<AppState>) -> Self {
         Self {
             state,
-            max_steps: 5, // Reduced for MVP testing speed
+            max_steps: 5,
         }
     }
 
     pub async fn run(&self, initial_req: ChatRequest) -> anyhow::Result<ChatResponse> {
-        // STEP 1: CLASSIFICATION
-        // Determine if this is a SIMPLE task, COMPLEX task, or TOOL request
         println!("[MAKER] Classifying request...");
         let class_resp = self.state.classifier_agent.handle_chat(initial_req.clone(), boomai_core::AgentContext {
             task_id: "classify".to_string(),
@@ -54,7 +52,6 @@ impl MakerOrchestrator {
 
     async fn run_tool_flow(&self, req: ChatRequest) -> anyhow::Result<ChatResponse> {
         println!("[MAKER] Executing TOOL flow (Router)...");
-        // Router agent handles tool invocation
         let mut resp = self.state.router_agent.handle_chat(req, boomai_core::AgentContext {
             task_id: "tool".to_string(),
             step_number: 0,
@@ -67,13 +64,12 @@ impl MakerOrchestrator {
     }
 
     async fn run_complex_flow(&self, initial_req: ChatRequest) -> anyhow::Result<ChatResponse> {
-        println!("[MAKER] Executing COMPLEX flow (Parallel MDAP)...");
+        println!("[MAKER] Executing COMPLEX flow (Full MDAP)...");
         let mut history = initial_req.messages.clone();
         let goal = history.last().map(|m| m.content.clone()).unwrap_or_default();
         
-        let _voting = VotingMechanism::new(2); // k=2 (ahead by 2)
-        // RedFlagFilter temporarily disabled to reduce false positives with TinyLlama
-        // let _red_flag = RedFlagFilter::new();
+        let voting = VotingMechanism::new(2); // k=2 (ahead by 2)
+        let red_flag = RedFlagFilter::new();
 
         println!("[MAKER] Starting orchestration for goal: {}", goal);
 
@@ -83,14 +79,19 @@ impl MakerOrchestrator {
         loop {
             step_count += 1;
             if step_count > self.max_steps {
-                println!("[MAKER] Max steps reached ({}), terminating.", self.max_steps);
-                break;
+                return Ok(ChatResponse {
+                    message: Message {
+                        role: Role::Assistant,
+                        content: format!("Stopped after {} steps. Last state: {}", self.max_steps, final_answer),
+                    },
+                    status: ExecutionStatus::Done, // or failed lol?
+                    maker_context: None,
+                });
             }
 
-            // 0. INTERROGATION (Stop Condition)
             if step_count > 1 {
                 let mut check_messages = Vec::new();
-                check_messages.push(Message { role: Role::System, content: "Review the history. Is the goal fully achieved? Output 'SOLVED' if yes, 'CONTINUE' if no.".to_string() });
+                check_messages.push(Message { role: Role::System, content: "Review the history. Is the goal fully achieved?".to_string() });
                 check_messages.push(Message { role: Role::User, content: format!("Goal: {}\nHistory:\n{}", goal, history.iter().skip(1).map(|m| format!("{:?}: {}", m.role, m.content)).collect::<Vec<_>>().join("\n")) });
                 
                 let check_req = ChatRequest { messages: check_messages };
@@ -108,11 +109,10 @@ impl MakerOrchestrator {
                 }
             }
 
-            // 1. DECOMPOSITION
             let mut decompose_messages = Vec::new();
             decompose_messages.push(Message {
                 role: Role::System,
-                content: "You are the Decomposer. Output the SINGLE immediate next step to solve the goal. Be concise.".to_string(),
+                content: "You are the Decomposer. Your job is to determine the single immediate next step to solve the user's goal, given the history of steps taken so far. If the goal is fully achieved, output 'DONE'. Otherwise, output just the instruction for the next step.".to_string(),
             });
             
             decompose_messages.push(Message {
@@ -136,51 +136,44 @@ impl MakerOrchestrator {
             println!("[MAKER] Step {}: {}", step_count, next_step);
 
             if next_step.eq_ignore_ascii_case("DONE") {
-                println!("[MAKER] Task complete (Decomposer signaled DONE).");
+                println!("[MAKER] Task complete.");
                 break;
             }
-
-            // 2. PARALLEL EXECUTION (with Voting)
             
-            let attempts = 3; // Number of parallel candidates
-            let needed_candidates = 1; // Reduced for MVP, usually would be 3 for voting
+            let mut candidates = Vec::new();
+            let attempts = 3; // reduced attempts
+            let needed_candidates = 1; // reduced for MVP/TinyLlama
             
-            // Construct the prompt for the worker
             let mut worker_messages = history.clone();
             worker_messages.push(Message {
                 role: Role::System,
                 content: format!("Execute this step: {}", next_step),
             });
 
-            let mut handles = Vec::new();
-            
-            // Spawn parallel tasks
-            for _ in 0..attempts {
-                let router_agent = self.state.router_agent.clone();
-                let req = ChatRequest { messages: worker_messages.clone() };
-                
-                let handle = tokio::spawn(async move {
-                    router_agent.handle_chat(req, boomai_core::AgentContext { 
-                        task_id: "orch_parallel".to_string(), 
-                        step_number: 0,
-                        depth: 0,
-                        max_depth: 5,
-                        maker_context: None,
-                    }).await
-                });
-                handles.push(handle);
-            }
+            for _i in 0..attempts {
+                if candidates.len() >= needed_candidates {
+                    break;
+                }
 
-            // Collect results
-            let mut candidates = Vec::new();
-            for handle in handles {
-                if let Ok(Ok(resp)) = handle.await {
-                    candidates.push(resp.message.content);
-                    // Early exit optimization could go here if we just need *any* valid answer
-                    if candidates.len() >= needed_candidates {
-                        // In a real system we might cancel other tasks, but here we just stop collecting
-                        // Note: tasks keep running in background until completion or cancellation
+                let worker_req = ChatRequest { messages: worker_messages.clone() };
+                let resp = self.state.router_agent.handle_chat(worker_req, boomai_core::AgentContext { 
+                    task_id: "orch".to_string(), 
+                    step_number: step_count,
+                    depth: 0,
+                    max_depth: 5,
+                    maker_context: None,
+                }).await;
+                
+                if let Ok(r) = resp {
+                    let content = r.message.content;
+
+                    // Apply RedFlag filtering
+                    if red_flag.is_flagged(&content) {
+                        println!("[MAKER] Red flag triggered on candidate. Discarding.");
+                        continue;
                     }
+
+                    candidates.push(content);
                 }
             }
 
@@ -189,15 +182,13 @@ impl MakerOrchestrator {
                  candidates.push("Failed to execute step.".to_string());
             }
 
-            // 3. VOTING
-            let winner = _voting.vote(candidates.clone()).unwrap_or_else(|| candidates[0].clone());
+            let winner = voting.vote(candidates.clone()).unwrap_or_else(|| candidates[0].clone());
             println!("[MAKER] Voted winner: {:.50}...", winner);
 
-            // 4. VERIFICATION
             let mut verify_messages = Vec::new();
             verify_messages.push(Message {
                 role: Role::System,
-                content: "Verify the result. Output 'CORRECT' if it reasonably addresses the step. Output 'INCORRECT' otherwise.".to_string()
+                content: "You are the Verifier. Check if the following Result correctly solves the Step. If yes, output 'CORRECT'. If no, output 'INCORRECT'.".to_string()
             });
             verify_messages.push(Message {
                 role: Role::User,
@@ -219,7 +210,6 @@ impl MakerOrchestrator {
                 final_answer = winner;
             } else {
                 println!("[MAKER] Verification failed. Retrying step not implemented in MVP, proceeding with caution.");
-                 // For MVP, just accept it or maybe retry. Let's accept but mark it.
                  history.push(Message { role: Role::Assistant, content: format!("Step: {}\nResult: {}", next_step, winner) });
                  final_answer = winner;
             }

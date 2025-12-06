@@ -7,11 +7,11 @@ use anyhow::Result;
 const CONFIG_FILE: &str = "config.json";
 const BACKUP_HISTORY_SIZE: usize = 5;
 
-/// Stores the active configuration and backup history
+/// active configuration and backup history
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonConfigStore {
     pub active_config: ModelConfig,
-    pub history: Vec<ModelConfig>, // Last N valid configurations
+    pub history: Vec<ModelConfig>, // N valid configurations
     pub last_updated: chrono::DateTime<chrono::Utc>,
 }
 
@@ -24,13 +24,11 @@ impl DaemonConfigStore {
         }
     }
     
-    /// Add current config to history before updating
     pub fn backup_and_update(&mut self, new_config: ModelConfig) {
-        // Add current config to history (avoid duplicates)
+        // current config history (avoid duplicates)
         if !self.history.iter().any(|c| c == &self.active_config) {
             self.history.push(self.active_config.clone());
             
-            // Keep only last N configs
             if self.history.len() > BACKUP_HISTORY_SIZE {
                 self.history.remove(0);
             }
@@ -40,18 +38,15 @@ impl DaemonConfigStore {
         self.last_updated = chrono::Utc::now();
     }
     
-    /// Get config at specific index from history
     pub fn get_history_config(&self, index: usize) -> Option<&ModelConfig> {
         self.history.get(index)
     }
     
-    /// Validate configuration before applying
     pub fn validate_config(&self, config: &ModelConfig) -> Result<()> {
         config.validate()
     }
 }
 
-/// Get platform-specific config directory
 pub fn get_config_dir() -> PathBuf {
     #[cfg(target_os = "macos")]
     let base_dir = dirs::home_dir()
@@ -75,22 +70,19 @@ pub fn get_config_dir() -> PathBuf {
     base_dir.join("boomai")
 }
 
-/// Get full path to config file
 pub fn get_config_path() -> PathBuf {
     get_config_dir().join(CONFIG_FILE)
 }
 
-/// Check if config file exists
 pub async fn config_exists() -> bool {
     get_config_path().exists()
 }
 
-/// Load configuration from disk
 pub async fn load_config() -> Result<DaemonConfigStore> {
     let config_path = get_config_path();
     
     if !config_path.exists() {
-        // Return default config if no file exists
+        // Return default
         let default_config = ModelConfig {
             base_url: "http://127.0.0.1:11434/v1".to_string(),
             api_key: None,
@@ -105,12 +97,9 @@ pub async fn load_config() -> Result<DaemonConfigStore> {
     
     Ok(store)
 }
-
-/// Save configuration to disk
 pub async fn save_config(store: &DaemonConfigStore) -> Result<()> {
     let config_path = get_config_path();
     
-    // Create directory if it doesn't exist
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent).await?;
     }
@@ -121,20 +110,15 @@ pub async fn save_config(store: &DaemonConfigStore) -> Result<()> {
     Ok(())
 }
 
-/// Atomic config update with backup
 pub async fn update_config(
     current_store: &mut DaemonConfigStore,
     new_config: ModelConfig,
 ) -> Result<()> {
-    // Validate new config
     current_store.validate_config(&new_config)?;
-    
-    // Backup current and update
     current_store.backup_and_update(new_config);
-    
-    // Persist to disk
     save_config(current_store).await?;
     
     Ok(())
 }
+
 

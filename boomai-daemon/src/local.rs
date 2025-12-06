@@ -66,6 +66,16 @@ pub fn get_available_models() -> Vec<AvailableLocalModel> {
             local_port: 11434,
             runtime_type: "ollama".to_string(),
         },
+        AvailableLocalModel {
+            id: "gpt-oss:20b".to_string(),
+            name: "GPT-OSS 20B".to_string(),
+            description: "OpenAI's open-weight model with configurable reasoning levels. Excellent for agentic tasks, chain-of-thought reasoning, and complex problem solving".to_string(),
+            size_gb: 44.0,
+            recommended_ram_gb: 16,
+            download_url: "ollama:gpt-oss:20b".to_string(),
+            local_port: 11434,
+            runtime_type: "ollama".to_string(),
+        },
     ]
 }
 

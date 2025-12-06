@@ -9,7 +9,6 @@ export interface SystemProfile {
 
 export interface Recommendation {
   recommended_engine: "Local" | "Cloud";
-  recommended_model?: string;
   reason: string;
 }
 
@@ -38,24 +37,12 @@ export interface InstalledLocalModel {
   runtime_type: string;
 }
 
-export interface McpServer {
-  id: string;
-  command: string;
-  args: string[];
-}
-
-export interface McpTool {
-  name: string;
-  description?: string;
-  input_schema: any;
-}
-
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
 }
 
-const API_BASE = "http://localhost:3030"; // Daemon running on port 3030
+const API_BASE = "http://localhost:3030"; // Daemon running on port temp
 
 export const api = {
   system: {
@@ -125,29 +112,6 @@ export const api = {
         return res.json();
       },
     },
-    mcp: {
-      listServers: async (): Promise<{ servers: string[] }> => {
-        const res = await fetch(`${API_BASE}/config/mcp/servers`);
-        if (!res.ok) throw new Error("Failed to list MCP servers");
-        return res.json();
-      },
-      addServer: async (id: string, command: string, args: string[]): Promise<{ status: string; message: string }> => {
-        const res = await fetch(`${API_BASE}/config/mcp/server/add`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, command, args }),
-        });
-        return res.json();
-      },
-      listTools: async (serverId: string): Promise<{ tools: McpTool[] }> => {
-        const res = await fetch(`${API_BASE}/config/mcp/tools`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ server_id: serverId }),
-        });
-        return res.json();
-      },
-    },
   },
   chat: {
     send: async (messages: ChatMessage[]): Promise<{ message: ChatMessage }> => {
@@ -165,3 +129,4 @@ export const api = {
     },
   },
 };
+

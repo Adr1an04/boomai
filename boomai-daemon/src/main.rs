@@ -55,7 +55,7 @@ async fn main() {
         }
     };
 
-    // Initialize provider with loaded config
+    // new provider with loaded config
     let provider: Arc<dyn ModelProvider> = Arc::new(HttpProvider::new(
         config_store.active_config.base_url.clone(),
         config_store.active_config.api_key.clone(),
@@ -63,12 +63,9 @@ async fn main() {
     ));
     let provider_lock = Arc::new(RwLock::new(provider.clone()));
 
-    // Managers
     let local_manager = LocalModelManager::new();
     let mcp_manager = McpManager::new();
-    let mcp_manager_for_shutdown = mcp_manager.clone();
 
-    // Initialize Agents with access to the dynamic provider
     let decomposer_agent = Arc::new(DecomposerAgent::new(provider_lock.clone()));
     let router_agent = Arc::new(RouterAgent::new(provider_lock.clone()));
     let verifier_agent = Arc::new(VerifierAgent::new(provider_lock.clone()));
@@ -76,7 +73,6 @@ async fn main() {
     let calculator_agent = Arc::new(CalculatorAgent::new(provider_lock.clone()));
     let interrogator_agent = Arc::new(InterrogatorAgent::new(provider_lock.clone()));
 
-    // Config store uses Tokio RwLock for async access
     let config_store_lock = Arc::new(TokioRwLock::new(config_store));
 
     let state = AppState {
@@ -92,7 +88,6 @@ async fn main() {
         interrogator_agent,
     };
 
-    // Save initial config if it didn't exist (to bootstrap the file)
     if !config_exists().await {
         let store = config_store_lock.read().await;
         if let Err(e) = save_config(&store).await {
@@ -100,7 +95,6 @@ async fn main() {
         }
     }
 
-    // Load server config (port, etc.)
     let config = Config::from_env();
 
     // route set up
@@ -134,36 +128,5 @@ async fn main() {
             );
             std::process::exit(1);
         });
-
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal(mcp_manager_for_shutdown))
-        .await
-        .unwrap();
-}
-
-async fn shutdown_signal(mcp_manager: McpManager) {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install signal handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-    }
-
-    println!("Signal received, starting graceful shutdown...");
-    mcp_manager.shutdown_all().await;
+    axum::serve(listener, app).await.unwrap();
 }
