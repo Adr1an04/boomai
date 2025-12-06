@@ -99,10 +99,6 @@ brew install ollama
 # Start Ollama service
 ollama serve
 
-# Pull a model (in another terminal)
-ollama pull llama2:7b  # or any other model
-
-
 **2. Run the backend daemon**
 
 ```bash

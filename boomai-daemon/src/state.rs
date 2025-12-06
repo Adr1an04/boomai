@@ -1,4 +1,4 @@
-use boomai_core::ModelProvider;
+use crate::core::ModelProvider;
 use std::sync::{Arc, RwLock};
 use tokio::sync::RwLock as TokioRwLock;
 

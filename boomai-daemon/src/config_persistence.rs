@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use boomai_core::ModelConfig;
+use crate::core::ModelConfig;
 use serde::{Deserialize, Serialize};
 use tokio::fs;
 use anyhow::Result;

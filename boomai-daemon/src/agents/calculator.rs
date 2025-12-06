@@ -1,13 +1,13 @@
-use boomai_core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role};
+use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role, ExecutionStatus, ModelProvider};
 use async_trait::async_trait;
 use std::sync::{Arc, RwLock};
 
 pub struct CalculatorAgent {
-    model_provider: Arc<RwLock<Arc<dyn boomai_core::ModelProvider>>>,
+    model_provider: Arc<RwLock<Arc<dyn ModelProvider>>>,
 }
 
 impl CalculatorAgent {
-    pub fn new(model_provider: Arc<RwLock<Arc<dyn boomai_core::ModelProvider>>>) -> Self {
+    pub fn new(model_provider: Arc<RwLock<Arc<dyn ModelProvider>>>) -> Self {
         Self { model_provider }
     }
 }
@@ -33,7 +33,7 @@ impl Agent for CalculatorAgent {
         };
 
         let mut response = provider.chat(calc_req).await?;
-        response.status = boomai_core::types::ExecutionStatus::Done;
+        response.status = ExecutionStatus::Done;
         response.maker_context = None;
         Ok(response)
     }

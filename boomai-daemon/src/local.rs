@@ -1,4 +1,4 @@
-use boomai_core::{AvailableLocalModel, InstalledLocalModel};
+use crate::core::{AvailableLocalModel, InstalledLocalModel};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::process::Command;
@@ -155,43 +155,7 @@ impl LocalModelManager {
         Ok(())
     }
 
-    pub async fn start_model(&self, model_id: &str) -> Result<(), String> {
-        println!("Starting model: {}", model_id);
-
-        let _serve_result = Command::new("ollama")
-            .args(&["serve"])
-            .spawn()
-            .map_err(|e| format!("Failed to start ollama serve: {}", e))?;
-
-        // Update running status
-        if let Ok(mut models) = self.installed_models.lock() {
-            if let Some(model) = models.get_mut(model_id) {
-                model.is_running = true;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn stop_model(&self, model_id: &str) -> Result<(), String> {
-        println!("Stopping model: {}", model_id);
-
-        // kill ollama process
-        let _kill_result = Command::new("pkill")
-            .args(&["-f", "ollama"])
-            .output()
-            .await
-            .map_err(|e| format!("Failed to stop ollama: {}", e))?;
-
-        // update running status
-        if let Ok(mut models) = self.installed_models.lock() {
-            if let Some(model) = models.get_mut(model_id) {
-                model.is_running = false;
-            }
-        }
-
-        Ok(())
-    }
+    // Runtime lifecycle controls can be added when integrating with model runtimes.
 
     pub fn get_installed_models(&self) -> Vec<InstalledLocalModel> {
         if let Ok(models) = self.installed_models.lock() {

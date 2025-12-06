@@ -336,27 +336,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "boomai-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "reqwest",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "boomai-daemon"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "axum",
- "boomai-core",
  "chrono",
  "dirs 5.0.1",
  "evalexpr",
+ "reqwest",
  "serde",
  "serde_json",
  "sysinfo",

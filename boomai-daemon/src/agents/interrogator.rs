@@ -1,13 +1,13 @@
-use boomai_core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role};
+use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role, ExecutionStatus, ModelProvider};
 use async_trait::async_trait;
 use std::sync::{Arc, RwLock};
 
 pub struct InterrogatorAgent {
-    model_provider: Arc<RwLock<Arc<dyn boomai_core::ModelProvider>>>,
+    model_provider: Arc<RwLock<Arc<dyn ModelProvider>>>,
 }
 
 impl InterrogatorAgent {
-    pub fn new(model_provider: Arc<RwLock<Arc<dyn boomai_core::ModelProvider>>>) -> Self {
+    pub fn new(model_provider: Arc<RwLock<Arc<dyn ModelProvider>>>) -> Self {
         Self { model_provider }
     }
 }
@@ -37,7 +37,7 @@ Review the history.
         };
 
         let mut response = provider.chat(check_req).await?;
-        response.status = boomai_core::types::ExecutionStatus::Done;
+        response.status = ExecutionStatus::Done;
         response.maker_context = None;
         Ok(response)
     }

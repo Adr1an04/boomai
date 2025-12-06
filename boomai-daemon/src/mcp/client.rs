@@ -11,7 +11,7 @@ use uuid::Uuid;
 use super::types::{JsonRpcId, JsonRpcRequest, JsonRpcResponse, McpInitializeParams, McpCapabilities, McpClientInfo, McpInitializeResult};
 
 pub struct McpClient {
-    server_process: Arc<Mutex<Child>>, // Wrapped in Mutex for interior mutability
+    server_process: Arc<Mutex<Child>>, // keep child alive while client lives
     request_tx: mpsc::Sender<JsonRpcRequest>,
     pending_requests: Arc<Mutex<HashMap<String, mpsc::Sender<JsonRpcResponse>>>>,
 }
@@ -81,12 +81,6 @@ impl McpClient {
         })
     }
 
-    pub async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut child = self.server_process.lock().await;
-        child.kill().await?;
-        Ok(())
-    }
-
     pub async fn send_request(&self, method: &str, params: Option<Value>) -> Result<Value, Box<dyn std::error::Error>> {
         let id = Uuid::new_v4().to_string();
         let request = JsonRpcRequest {
@@ -147,6 +141,17 @@ impl McpClient {
         let result_value = self.send_request("tools/list", None).await?;
         let result: super::types::McpListToolsResult = serde_json::from_value(result_value)?;
         Ok(result)
+    }
+}
+
+impl Drop for McpClient {
+    fn drop(&mut self) {
+        // Best-effort kill on drop to avoid leaks.
+        let server = self.server_process.clone();
+        tokio::spawn(async move {
+            let mut child = server.lock().await;
+            let _ = child.kill().await;
+        });
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::types::{ChatRequest, ChatResponse};
+use crate::core::types::{ChatRequest, ChatResponse};
 use async_trait::async_trait;
 
 #[async_trait]

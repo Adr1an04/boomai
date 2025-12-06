@@ -1,13 +1,13 @@
-use boomai_core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role, ExecutionStatus};
+use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role, ExecutionStatus, ModelProvider};
 use async_trait::async_trait;
 use std::sync::{Arc, RwLock};
 
 pub struct ClassifierAgent {
-    model_provider: Arc<RwLock<Arc<dyn boomai_core::ModelProvider>>>,
+    model_provider: Arc<RwLock<Arc<dyn ModelProvider>>>,
 }
 
 impl ClassifierAgent {
-    pub fn new(model_provider: Arc<RwLock<Arc<dyn boomai_core::ModelProvider>>>) -> Self {
+    pub fn new(model_provider: Arc<RwLock<Arc<dyn ModelProvider>>>) -> Self {
         Self { model_provider }
     }
 }

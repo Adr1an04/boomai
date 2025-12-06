@@ -1,13 +1,13 @@
-use boomai_core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role};
+use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role, ExecutionStatus, ModelProvider};
 use async_trait::async_trait;
 use std::sync::{Arc, RwLock};
 
 pub struct RouterAgent {
-    model_provider: Arc<RwLock<Arc<dyn boomai_core::ModelProvider>>>,
+    model_provider: Arc<RwLock<Arc<dyn ModelProvider>>>,
 }
 
 impl RouterAgent {
-    pub fn new(model_provider: Arc<RwLock<Arc<dyn boomai_core::ModelProvider>>>) -> Self {
+    pub fn new(model_provider: Arc<RwLock<Arc<dyn ModelProvider>>>) -> Self {
         Self { model_provider }
     }
 }
@@ -38,7 +38,7 @@ impl Agent for RouterAgent {
                         role: Role::System,
                         content: "Internal Error: Failed to access model provider".to_string(),
                     },
-                    status: boomai_core::types::ExecutionStatus::Failed,
+                    status: ExecutionStatus::Failed,
                     maker_context: None,
                 });
             }

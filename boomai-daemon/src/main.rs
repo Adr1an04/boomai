@@ -1,8 +1,8 @@
-    use axum::{
+use axum::{
     routing::{get, post},
     Router,
 };
-use boomai_core::{DummyProvider, HttpProvider, ModelProvider};
+use crate::core::{HttpProvider, ModelProvider};
 use std::sync::{Arc, RwLock};
 use tokio::sync::RwLock as TokioRwLock;
 
@@ -14,6 +14,7 @@ mod local;
 mod mcp;
 mod agents;
 mod config_persistence;
+mod core;
 
 use config::Config;
 use handlers::{
@@ -46,7 +47,7 @@ async fn main() {
         }
         Err(e) => {
             eprintln!("Failed to load configuration, using defaults: {}", e);
-            let default_config = boomai_core::ModelConfig {
+            let default_config = crate::core::ModelConfig {
                 base_url: "http://127.0.0.1:11434/v1".to_string(),
                 api_key: None,
                 model: "tinyllama".to_string(),

@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use boomai_core::{ChatRequest, ChatResponse, Message, Role, Agent, ExecutionStatus};
+use crate::core::{ChatRequest, ChatResponse, Message, Role, Agent, ExecutionStatus, AgentContext};
 use crate::state::AppState;
 use crate::agents::voting::VotingMechanism;
 use crate::agents::red_flag::RedFlagFilter;
@@ -19,13 +19,7 @@ impl MakerOrchestrator {
 
     pub async fn run(&self, initial_req: ChatRequest) -> anyhow::Result<ChatResponse> {
         println!("[MAKER] Classifying request...");
-        let class_resp = self.state.classifier_agent.handle_chat(initial_req.clone(), boomai_core::AgentContext {
-            task_id: "classify".to_string(),
-            step_number: 0,
-            depth: 0,
-            max_depth: 1,
-            maker_context: None,
-        }).await?;
+        let class_resp = self.state.classifier_agent.handle_chat(initial_req.clone(), AgentContext::default()).await?;
 
         let classification = class_resp.message.content.trim().to_uppercase();
         println!("[MAKER] Request classified as: {}", classification);
@@ -41,24 +35,12 @@ impl MakerOrchestrator {
 
     async fn run_simple_flow(&self, req: ChatRequest) -> anyhow::Result<ChatResponse> {
         println!("[MAKER] Executing SIMPLE flow (Calculator/Direct)...");
-        self.state.calculator_agent.handle_chat(req, boomai_core::AgentContext {
-            task_id: "simple".to_string(),
-            step_number: 0,
-            depth: 0,
-            max_depth: 1,
-            maker_context: None,
-        }).await
+        self.state.calculator_agent.handle_chat(req, AgentContext::default()).await
     }
 
     async fn run_tool_flow(&self, req: ChatRequest) -> anyhow::Result<ChatResponse> {
         println!("[MAKER] Executing TOOL flow (Router)...");
-        let mut resp = self.state.router_agent.handle_chat(req, boomai_core::AgentContext {
-            task_id: "tool".to_string(),
-            step_number: 0,
-            depth: 0,
-            max_depth: 1,
-            maker_context: None,
-        }).await?;
+        let mut resp = self.state.router_agent.handle_chat(req, AgentContext::default()).await?;
         resp.status = ExecutionStatus::Done;
         Ok(resp)
     }
@@ -95,13 +77,7 @@ impl MakerOrchestrator {
                 check_messages.push(Message { role: Role::User, content: format!("Goal: {}\nHistory:\n{}", goal, history.iter().skip(1).map(|m| format!("{:?}: {}", m.role, m.content)).collect::<Vec<_>>().join("\n")) });
                 
                 let check_req = ChatRequest { messages: check_messages };
-                let check_resp = self.state.interrogator_agent.handle_chat(check_req, boomai_core::AgentContext {
-                    task_id: "orch".to_string(),
-                    step_number: step_count,
-                    depth: 0,
-                    max_depth: 1,
-                    maker_context: None,
-                }).await?;
+                let check_resp = self.state.interrogator_agent.handle_chat(check_req, AgentContext::default()).await?;
 
                 if check_resp.message.content.to_uppercase().contains("SOLVED") {
                     println!("[MAKER] Interrogator signaled SOLVED. Stopping.");
@@ -124,13 +100,7 @@ impl MakerOrchestrator {
             });
 
             let next_step_req = ChatRequest { messages: decompose_messages };
-            let next_step_resp = self.state.decomposer_agent.handle_chat(next_step_req, boomai_core::AgentContext { 
-                task_id: "orch".to_string(), 
-                step_number: step_count,
-                depth: 0,
-                max_depth: 5,
-                maker_context: None,
-            }).await?;
+            let next_step_resp = self.state.decomposer_agent.handle_chat(next_step_req, AgentContext::default()).await?;
             let next_step = next_step_resp.message.content.trim();
 
             println!("[MAKER] Step {}: {}", step_count, next_step);
@@ -156,13 +126,7 @@ impl MakerOrchestrator {
                 }
 
                 let worker_req = ChatRequest { messages: worker_messages.clone() };
-                let resp = self.state.router_agent.handle_chat(worker_req, boomai_core::AgentContext { 
-                    task_id: "orch".to_string(), 
-                    step_number: step_count,
-                    depth: 0,
-                    max_depth: 5,
-                    maker_context: None,
-                }).await;
+                let resp = self.state.router_agent.handle_chat(worker_req, AgentContext::default()).await;
                 
                 if let Ok(r) = resp {
                     let content = r.message.content;
@@ -196,13 +160,7 @@ impl MakerOrchestrator {
             });
 
             let verify_req = ChatRequest { messages: verify_messages };
-            let verify_resp = self.state.verifier_agent.handle_chat(verify_req, boomai_core::AgentContext { 
-                task_id: "orch".to_string(), 
-                step_number: step_count,
-                depth: 0,
-                max_depth: 5,
-                maker_context: None,
-            }).await?;
+            let verify_resp = self.state.verifier_agent.handle_chat(verify_req, AgentContext::default()).await?;
             
             if verify_resp.message.content.to_uppercase().contains("CORRECT") {
                 println!("[MAKER] Step verified.");

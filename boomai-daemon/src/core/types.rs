@@ -17,7 +17,6 @@ pub struct Message {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatRequest {
     pub messages: Vec<Message>,
-    // later: metadata like workspace_id, tools, etc.
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -77,15 +76,15 @@ impl ModelConfig {
         if self.base_url.trim().is_empty() {
             return Err(anyhow::anyhow!("base_url cannot be empty"));
         }
-        
+
         if !self.base_url.starts_with("http://") && !self.base_url.starts_with("https://") {
             return Err(anyhow::anyhow!("base_url must be a valid HTTP/HTTPS URL"));
         }
-        
+
         if self.model.trim().is_empty() {
             return Err(anyhow::anyhow!("model name cannot be empty"));
         }
-        
+
         Ok(())
     }
 }
@@ -99,7 +98,7 @@ pub struct AvailableLocalModel {
     pub recommended_ram_gb: u32,
     pub download_url: String,
     pub local_port: u16,
-    pub runtime_type: String, // "ollama", "lm-studio", etc.
+    pub runtime_type: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -110,3 +109,4 @@ pub struct InstalledLocalModel {
     pub port: u16,
     pub runtime_type: String,
 }
+

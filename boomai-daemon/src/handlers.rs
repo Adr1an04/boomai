@@ -1,5 +1,5 @@
 use axum::{extract::{State, Path}, Json};
-use boomai_core::{ChatRequest, ChatResponse, HttpProvider, Message, ModelConfig, Role};
+use crate::core::{ChatRequest, ChatResponse, HttpProvider, Message, ModelConfig, Role, ModelProvider, ExecutionStatus};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -35,7 +35,6 @@ pub async fn config_model_test(
         config.api_key.clone(),
         config.model.clone(),
     );
-    use boomai_core::ModelProvider;
 
     let test_req = ChatRequest {
         messages: vec![Message {
@@ -276,7 +275,7 @@ pub async fn chat_handler(
                     role: Role::System,
                     content: format!("Error: {}", err),
                 },
-                status: boomai_core::types::ExecutionStatus::Failed,
+                status: ExecutionStatus::Failed,
                 maker_context: None,
             })
         }
