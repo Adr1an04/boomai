@@ -16,11 +16,8 @@ impl MakerOrchestrator {
 
     pub async fn run(&self, initial_req: ChatRequest) -> anyhow::Result<ChatResponse> {
         println!("[MAKER] Classifying request...");
-        let class_resp = self
-            .state
-            .classifier_agent
-            .handle_chat(initial_req.clone(), AgentContext::default())
-            .await?;
+        let class_resp =
+            self.state.classifier_agent.handle_chat(initial_req.clone(), AgentContext).await?;
 
         let classification = class_resp.message.content.trim().to_uppercase();
         println!("[MAKER] Request classified as: {}", classification);
@@ -36,12 +33,12 @@ impl MakerOrchestrator {
 
     async fn run_simple_flow(&self, req: ChatRequest) -> anyhow::Result<ChatResponse> {
         println!("[MAKER] Executing SIMPLE flow (Calculator/Direct)...");
-        self.state.calculator_agent.handle_chat(req, AgentContext::default()).await
+        self.state.calculator_agent.handle_chat(req, AgentContext).await
     }
 
     async fn run_tool_flow(&self, req: ChatRequest) -> anyhow::Result<ChatResponse> {
         println!("[MAKER] Executing TOOL flow (Router)...");
-        let mut resp = self.state.router_agent.handle_chat(req, AgentContext::default()).await?;
+        let mut resp = self.state.router_agent.handle_chat(req, AgentContext).await?;
         resp.status = ExecutionStatus::Done;
         Ok(resp)
     }
@@ -96,11 +93,8 @@ impl MakerOrchestrator {
                 });
 
                 let check_req = ChatRequest { messages: check_messages };
-                let check_resp = self
-                    .state
-                    .interrogator_agent
-                    .handle_chat(check_req, AgentContext::default())
-                    .await?;
+                let check_resp =
+                    self.state.interrogator_agent.handle_chat(check_req, AgentContext).await?;
 
                 if check_resp.message.content.to_uppercase().contains("SOLVED") {
                     println!("[MAKER] Interrogator signaled SOLVED. Stopping.");
@@ -129,11 +123,8 @@ impl MakerOrchestrator {
             });
 
             let next_step_req = ChatRequest { messages: decompose_messages };
-            let next_step_resp = self
-                .state
-                .decomposer_agent
-                .handle_chat(next_step_req, AgentContext::default())
-                .await?;
+            let next_step_resp =
+                self.state.decomposer_agent.handle_chat(next_step_req, AgentContext).await?;
             let next_step = next_step_resp.message.content.trim();
 
             println!("[MAKER] Step {}: {}", step_count, next_step);
@@ -159,8 +150,7 @@ impl MakerOrchestrator {
                 }
 
                 let worker_req = ChatRequest { messages: worker_messages.clone() };
-                let resp =
-                    self.state.router_agent.handle_chat(worker_req, AgentContext::default()).await;
+                let resp = self.state.router_agent.handle_chat(worker_req, AgentContext).await;
 
                 if let Ok(r) = resp {
                     let content = r.message.content;
@@ -195,7 +185,7 @@ impl MakerOrchestrator {
 
             let verify_req = ChatRequest { messages: verify_messages };
             let verify_resp =
-                self.state.verifier_agent.handle_chat(verify_req, AgentContext::default()).await?;
+                self.state.verifier_agent.handle_chat(verify_req, AgentContext).await?;
 
             if verify_resp.message.content.to_uppercase().contains("CORRECT") {
                 println!("[MAKER] Step verified.");
