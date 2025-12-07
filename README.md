@@ -138,3 +138,9 @@ Fast checks before PRs:
 ## License
 
 Boomai is available under the MIT License.
+
+---
+
+## Releases & Versioning
+- Pre-1.0 SemVer-ish: `0.x.y` with `v` tags (e.g., `v0.1.0`).
+- See `docs/versioning.md` for how to tag and what the release workflow does.
