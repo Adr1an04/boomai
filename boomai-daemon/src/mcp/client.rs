@@ -1,14 +1,17 @@
-use std::process::Stdio;
-use tokio::process::{Child, Command};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::mpsc;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::process::Stdio;
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{Child, Command};
+use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use super::types::{JsonRpcId, JsonRpcRequest, JsonRpcResponse, McpInitializeParams, McpCapabilities, McpClientInfo, McpInitializeResult};
+use super::types::{
+    JsonRpcId, JsonRpcRequest, JsonRpcResponse, McpCapabilities, McpClientInfo,
+    McpInitializeParams, McpInitializeResult,
+};
 
 pub struct McpClient {
     server_process: Arc<Mutex<Child>>, // keep child alive while client lives
@@ -39,7 +42,8 @@ impl McpClient {
         });
 
         let (request_tx, mut request_rx) = mpsc::channel::<JsonRpcRequest>(32);
-        let pending_requests: Arc<Mutex<HashMap<String, mpsc::Sender<JsonRpcResponse>>>> = Arc::new(Mutex::new(HashMap::new()));
+        let pending_requests: Arc<Mutex<HashMap<String, mpsc::Sender<JsonRpcResponse>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         let pending_requests_clone = pending_requests.clone();
 
         // writer task
@@ -74,14 +78,14 @@ impl McpClient {
             }
         });
 
-        Ok(Self {
-            server_process: Arc::new(Mutex::new(child)),
-            request_tx,
-            pending_requests,
-        })
+        Ok(Self { server_process: Arc::new(Mutex::new(child)), request_tx, pending_requests })
     }
 
-    pub async fn send_request(&self, method: &str, params: Option<Value>) -> Result<Value, Box<dyn std::error::Error>> {
+    pub async fn send_request(
+        &self,
+        method: &str,
+        params: Option<Value>,
+    ) -> Result<Value, Box<dyn std::error::Error>> {
         let id = Uuid::new_v4().to_string();
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
@@ -111,20 +115,17 @@ impl McpClient {
     pub async fn initialize(&self) -> Result<McpInitializeResult, Box<dyn std::error::Error>> {
         let params = McpInitializeParams {
             protocol_version: "2024-11-05".to_string(), // Latest draft
-            capabilities: McpCapabilities {
-                experimental: None,
-                sampling: None,
-                roots: None,
-            },
+            capabilities: McpCapabilities { experimental: None, sampling: None, roots: None },
             client_info: McpClientInfo {
                 name: "boomai-daemon".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
         };
 
-        let result_value = self.send_request("initialize", Some(serde_json::to_value(params)?)).await?;
+        let result_value =
+            self.send_request("initialize", Some(serde_json::to_value(params)?)).await?;
         let result: McpInitializeResult = serde_json::from_value(result_value)?;
-        
+
         // After initialize, send initialized notification
         let notification = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
@@ -136,8 +137,10 @@ impl McpClient {
 
         Ok(result)
     }
-    
-    pub async fn list_tools(&self) -> Result<super::types::McpListToolsResult, Box<dyn std::error::Error>> {
+
+    pub async fn list_tools(
+        &self,
+    ) -> Result<super::types::McpListToolsResult, Box<dyn std::error::Error>> {
         let result_value = self.send_request("tools/list", None).await?;
         let result: super::types::McpListToolsResult = serde_json::from_value(result_value)?;
         Ok(result)
@@ -154,4 +157,3 @@ impl Drop for McpClient {
         });
     }
 }
-

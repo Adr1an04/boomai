@@ -31,7 +31,7 @@ pub fn get_system_profile() -> SystemProfile {
 
     let total_memory = sys.total_memory();
     let used_memory = sys.used_memory();
-    
+
     // sysinfo returns bytes, convert to GB
     let total_memory_gb = total_memory / 1024 / 1024 / 1024;
     let used_memory_gb = used_memory / 1024 / 1024 / 1024;
@@ -42,7 +42,7 @@ pub fn get_system_profile() -> SystemProfile {
 
     let os_name = System::name().unwrap_or_else(|| "Unknown".to_string());
     let os_version = System::os_version().unwrap_or_else(|| "Unknown".to_string());
-    
+
     // architecture check
     let architecture = std::env::consts::ARCH.to_string();
 
@@ -60,10 +60,11 @@ pub fn get_system_profile() -> SystemProfile {
 pub fn get_recommendation(profile: &SystemProfile) -> EngineRecommendation {
     // Enhanced recommendation logic based on system capabilities
 
-    let is_apple_silicon = profile.os_name.to_lowercase().contains("macos") && profile.architecture == "aarch64";
+    let is_apple_silicon =
+        profile.os_name.to_lowercase().contains("macos") && profile.architecture == "aarch64";
     let has_high_end_ram = profile.total_memory_gb >= 64; // For Qwen3-32B
-    let has_good_ram = profile.total_memory_gb >= 16;     // For smaller models
-    let has_minimal_ram = profile.total_memory_gb >= 8;   // For TinyLlama
+    let has_good_ram = profile.total_memory_gb >= 16; // For smaller models
+    let has_minimal_ram = profile.total_memory_gb >= 8; // For TinyLlama
 
     if is_apple_silicon || has_high_end_ram {
         EngineRecommendation {
@@ -91,4 +92,3 @@ pub fn get_recommendation(profile: &SystemProfile) -> EngineRecommendation {
         }
     }
 }
-

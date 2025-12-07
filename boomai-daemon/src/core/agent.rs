@@ -6,6 +6,9 @@ pub struct AgentContext;
 
 #[async_trait]
 pub trait Agent: Send + Sync {
-    async fn handle_chat(&self, req: ChatRequest, ctx: AgentContext) -> anyhow::Result<ChatResponse>;
+    async fn handle_chat(
+        &self,
+        req: ChatRequest,
+        ctx: AgentContext,
+    ) -> anyhow::Result<ChatResponse>;
 }
-

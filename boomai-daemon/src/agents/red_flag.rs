@@ -9,7 +9,8 @@ impl RedFlagFilter {
 
     pub fn is_flagged(&self, response: &str) -> bool {
         // 1. Check length
-        if response.len() > self.max_token_length * 4 { // Rough char estimate
+        if response.len() > self.max_token_length * 4 {
+            // Rough char estimate
             return true;
         }
 
@@ -20,10 +21,7 @@ impl RedFlagFilter {
 
         // 3. Check formatting (e.g., missing expected JSON/XML structure if required)
         // This would be more sophisticated in a full implementation
-        
+
         false
     }
 }
-
-
-

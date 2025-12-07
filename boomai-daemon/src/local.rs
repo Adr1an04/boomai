@@ -86,9 +86,7 @@ pub struct LocalModelManager {
 
 impl LocalModelManager {
     pub fn new() -> Self {
-        Self {
-            installed_models: Arc::new(Mutex::new(HashMap::new())),
-        }
+        Self { installed_models: Arc::new(Mutex::new(HashMap::new())) }
     }
 
     pub async fn install_model(&self, model_id: &str) -> Result<(), String> {
@@ -165,4 +163,3 @@ impl LocalModelManager {
         }
     }
 }
-

@@ -1,4 +1,6 @@
-use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role, ExecutionStatus, ModelProvider};
+use crate::core::{
+    Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, ModelProvider, Role,
+};
 use async_trait::async_trait;
 use std::sync::{Arc, RwLock};
 
@@ -14,7 +16,11 @@ impl VerifierAgent {
 
 #[async_trait]
 impl Agent for VerifierAgent {
-    async fn handle_chat(&self, req: ChatRequest, _ctx: AgentContext) -> anyhow::Result<ChatResponse> {
+    async fn handle_chat(
+        &self,
+        req: ChatRequest,
+        _ctx: AgentContext,
+    ) -> anyhow::Result<ChatResponse> {
         // Verifier logic: Check the proposed answer for errors.
 
         let mut messages = req.messages.clone();
@@ -46,4 +52,3 @@ impl Agent for VerifierAgent {
         provider.chat(verify_req).await
     }
 }
-

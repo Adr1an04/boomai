@@ -1,4 +1,6 @@
-use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role, ExecutionStatus, ModelProvider};
+use crate::core::{
+    Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, ModelProvider, Role,
+};
 use async_trait::async_trait;
 use std::sync::{Arc, RwLock};
 
@@ -14,7 +16,11 @@ impl DecomposerAgent {
 
 #[async_trait]
 impl Agent for DecomposerAgent {
-    async fn handle_chat(&self, req: ChatRequest, _ctx: AgentContext) -> anyhow::Result<ChatResponse> {
+    async fn handle_chat(
+        &self,
+        req: ChatRequest,
+        _ctx: AgentContext,
+    ) -> anyhow::Result<ChatResponse> {
         // Basic decomposition logic: For now, just pass through or add a system prompt
         // In a real implementation, this would break down the task.
         // MAKER principle: m=1 (Maximal Decomposition)
@@ -47,4 +53,3 @@ impl Agent for DecomposerAgent {
         provider.chat(decompose_req).await
     }
 }
-

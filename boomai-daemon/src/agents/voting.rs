@@ -11,12 +11,12 @@ impl VotingMechanism {
 
     pub fn vote(&self, candidates: Vec<String>) -> Option<String> {
         let mut counts: HashMap<String, usize> = HashMap::new();
-        
+
         for candidate in candidates {
             *counts.entry(candidate.clone()).or_insert(0) += 1;
-            
+
             let current_count = counts[&candidate];
-            
+
             let mut max_other = 0;
             for (other_cand, &other_count) in &counts {
                 if other_cand != &candidate {
@@ -28,10 +28,7 @@ impl VotingMechanism {
                 return Some(candidate);
             }
         }
-        
+
         counts.into_iter().max_by_key(|&(_, count)| count).map(|(cand, _)| cand)
     }
 }
-
-
-

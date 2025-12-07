@@ -1,5 +1,5 @@
 use crate::core::provider::ModelProvider;
-use crate::core::types::{ChatRequest, ChatResponse, Message, Role, ExecutionStatus};
+use crate::core::types::{ChatRequest, ChatResponse, ExecutionStatus, Message, Role};
 use async_trait::async_trait;
 use reqwest::Client;
 
@@ -12,17 +12,9 @@ pub struct HttpProvider {
 
 impl HttpProvider {
     pub fn new(base_url: String, api_key: Option<String>, model: String) -> Self {
-        let client = Client::builder()
-            .no_proxy()
-            .build()
-            .unwrap_or_else(|_| Client::new());
+        let client = Client::builder().no_proxy().build().unwrap_or_else(|_| Client::new());
 
-        Self {
-            base_url,
-            api_key,
-            model,
-            client,
-        }
+        Self { base_url, api_key, model, client }
     }
 }
 
@@ -61,13 +53,9 @@ impl ModelProvider for HttpProvider {
             .ok_or_else(|| anyhow::anyhow!("Invalid response format or missing content"))?;
 
         Ok(ChatResponse {
-            message: Message {
-                role: Role::Assistant,
-                content: content.to_string(),
-            },
+            message: Message { role: Role::Assistant, content: content.to_string() },
             status: ExecutionStatus::Done,
             maker_context: None,
         })
     }
 }
-

@@ -1,12 +1,18 @@
-use axum::{extract::{State, Path}, Json};
-use crate::core::{ChatRequest, ChatResponse, HttpProvider, Message, ModelConfig, Role, ModelProvider, ExecutionStatus};
+use crate::core::{
+    ChatRequest, ChatResponse, ExecutionStatus, HttpProvider, Message, ModelConfig, ModelProvider,
+    Role,
+};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
+use crate::agents::MakerOrchestrator;
+use crate::config_persistence::{save_config, update_config};
 use crate::state::AppState;
 use crate::system::{get_recommendation, get_system_profile, EngineRecommendation, SystemProfile};
-use crate::config_persistence::{update_config, save_config};
-use crate::agents::MakerOrchestrator;
 
 pub async fn health_check() -> Json<Value> {
     Json(json!({ "status": "ok" }))
@@ -25,27 +31,20 @@ pub async fn system_recommendation_handler() -> Json<EngineRecommendation> {
     Json(get_recommendation(&profile))
 }
 
-pub async fn config_model_test(
-    Json(config): Json<ModelConfig>,
-) -> Json<Value> {
+pub async fn config_model_test(Json(config): Json<ModelConfig>) -> Json<Value> {
     println!("Testing model config: {:?}", config);
 
-    let provider = HttpProvider::new(
-        config.base_url.clone(),
-        config.api_key.clone(),
-        config.model.clone(),
-    );
+    let provider =
+        HttpProvider::new(config.base_url.clone(), config.api_key.clone(), config.model.clone());
 
-    let test_req = ChatRequest {
-        messages: vec![Message {
-            role: Role::User,
-            content: "Hello".to_string(),
-        }],
-    };
+    let test_req =
+        ChatRequest { messages: vec![Message { role: Role::User, content: "Hello".to_string() }] };
 
     match provider.chat(test_req).await {
         Ok(_) => Json(json!({ "status": "success", "message": "Connection successful" })),
-        Err(e) => Json(json!({ "status": "error", "message": format!("Connection failed: {}", e) })),
+        Err(e) => {
+            Json(json!({ "status": "error", "message": format!("Connection failed: {}", e) }))
+        }
     }
 }
 
@@ -58,25 +57,19 @@ pub async fn config_model_save(
     let mut config_store = state.config_store.write().await;
 
     match update_config(&mut config_store, new_config).await {
-        Ok(_) => {
-            Json(json!({ 
-                "status": "success", 
-                "message": "Configuration saved and backed up",
-                "backup_count": config_store.history.len()
-            }))
-        }
-        Err(e) => {
-            Json(json!({ 
-                "status": "error", 
-                "message": format!("Configuration validation failed: {}", e) 
-            }))
-        }
+        Ok(_) => Json(json!({
+            "status": "success",
+            "message": "Configuration saved and backed up",
+            "backup_count": config_store.history.len()
+        })),
+        Err(e) => Json(json!({
+            "status": "error",
+            "message": format!("Configuration validation failed: {}", e)
+        })),
     }
 }
 
-pub async fn config_model_reload(
-    State(state): State<AppState>,
-) -> Json<Value> {
+pub async fn config_model_reload(State(state): State<AppState>) -> Json<Value> {
     let config_store = state.config_store.read().await;
     let active_config = &config_store.active_config;
 
@@ -89,14 +82,14 @@ pub async fn config_model_reload(
 
     if let Ok(mut lock) = state.model_provider.write() {
         *lock = new_provider;
-        Json(json!({ 
-            "status": "success", 
-            "message": "Provider reloaded with current configuration" 
+        Json(json!({
+            "status": "success",
+            "message": "Provider reloaded with current configuration"
         }))
     } else {
-        Json(json!({ 
-            "status": "error", 
-            "message": "Failed to acquire provider lock for reload" 
+        Json(json!({
+            "status": "error",
+            "message": "Failed to acquire provider lock for reload"
         }))
     }
 }
@@ -110,9 +103,9 @@ pub async fn config_model_rollback(
     if let Some(rollback_config) = config_store.get_history_config(index).cloned() {
         // validate rollback config
         if let Err(e) = config_store.validate_config(&rollback_config) {
-            return Json(json!({ 
-                "status": "error", 
-                "message": format!("Rollback config is invalid: {}", e) 
+            return Json(json!({
+                "status": "error",
+                "message": format!("Rollback config is invalid: {}", e)
             }));
         }
 
@@ -121,21 +114,21 @@ pub async fn config_model_rollback(
 
         // save rolled-back state
         if let Err(e) = save_config(&config_store).await {
-            return Json(json!({ 
-                "status": "error", 
-                "message": format!("Failed to save rollback: {}", e) 
+            return Json(json!({
+                "status": "error",
+                "message": format!("Failed to save rollback: {}", e)
             }));
         }
 
-        Json(json!({ 
-            "status": "success", 
+        Json(json!({
+            "status": "success",
             "message": format!("Rolled back to configuration {}", index),
             "new_config": config_store.active_config
         }))
     } else {
-        Json(json!({ 
-            "status": "error", 
-            "message": format!("No configuration found at index {}", index) 
+        Json(json!({
+            "status": "error",
+            "message": format!("No configuration found at index {}", index)
         }))
     }
 }
@@ -145,9 +138,7 @@ pub async fn config_local_available_models() -> Json<Value> {
     Json(json!({ "models": models }))
 }
 
-pub async fn config_local_installed_models(
-    State(state): State<AppState>,
-) -> Json<Value> {
+pub async fn config_local_installed_models(State(state): State<AppState>) -> Json<Value> {
     let models = state.local_manager.get_installed_models();
     Json(json!({ "models": models }))
 }
@@ -158,10 +149,12 @@ pub async fn config_local_install_model(
 ) -> Json<Value> {
     let model_id = match payload["model_id"].as_str() {
         Some(id) => id,
-        None => return Json(json!({
-            "status": "error",
-            "message": "Missing model_id in request"
-        })),
+        None => {
+            return Json(json!({
+                "status": "error",
+                "message": "Missing model_id in request"
+            }))
+        }
     };
 
     println!("Installing local model: {}", model_id);
@@ -184,10 +177,12 @@ pub async fn config_local_uninstall_model(
 ) -> Json<Value> {
     let model_id = match payload["model_id"].as_str() {
         Some(id) => id,
-        None => return Json(json!({
-            "status": "error",
-            "message": "Missing model_id in request"
-        })),
+        None => {
+            return Json(json!({
+                "status": "error",
+                "message": "Missing model_id in request"
+            }))
+        }
     };
 
     println!("Uninstalling local model: {}", model_id);
@@ -204,9 +199,7 @@ pub async fn config_local_uninstall_model(
     }
 }
 
-pub async fn config_mcp_servers_list(
-    State(state): State<AppState>,
-) -> Json<Value> {
+pub async fn config_mcp_servers_list(State(state): State<AppState>) -> Json<Value> {
     let servers = state.mcp_manager.list_clients().await;
     Json(json!({ "servers": servers }))
 }
@@ -219,7 +212,7 @@ pub async fn config_mcp_server_add(
         Some(id) => id,
         None => return Json(json!({ "status": "error", "message": "Missing server id" })),
     };
-    
+
     let command = match payload["command"].as_str() {
         Some(cmd) => cmd,
         None => return Json(json!({ "status": "error", "message": "Missing command" })),
@@ -231,8 +224,12 @@ pub async fn config_mcp_server_add(
     };
 
     match state.mcp_manager.add_client(id.to_string(), command, &args_vec).await {
-        Ok(_) => Json(json!({ "status": "success", "message": format!("MCP server {} added", id) })),
-        Err(e) => Json(json!({ "status": "error", "message": format!("Failed to add server: {}", e) })),
+        Ok(_) => {
+            Json(json!({ "status": "success", "message": format!("MCP server {} added", id) }))
+        }
+        Err(e) => {
+            Json(json!({ "status": "error", "message": format!("Failed to add server: {}", e) }))
+        }
     }
 }
 
@@ -247,8 +244,12 @@ pub async fn config_mcp_tools_list(
 
     if let Some(client) = state.mcp_manager.get_client(server_id).await {
         match client.list_tools().await {
-            Ok(tools) => Json(serde_json::to_value(tools).unwrap_or(json!({ "error": "Serialization failed" }))),
-            Err(e) => Json(json!({ "status": "error", "message": format!("Failed to list tools: {}", e) })),
+            Ok(tools) => Json(
+                serde_json::to_value(tools).unwrap_or(json!({ "error": "Serialization failed" })),
+            ),
+            Err(e) => Json(
+                json!({ "status": "error", "message": format!("Failed to list tools: {}", e) }),
+            ),
         }
     } else {
         Json(json!({ "status": "error", "message": "Server not found" }))
@@ -259,22 +260,16 @@ pub async fn chat_handler(
     State(state): State<AppState>,
     Json(payload): Json<ChatRequest>,
 ) -> Json<ChatResponse> {
-    println!(
-        "Received chat request with {} messages",
-        payload.messages.len()
-    );
+    println!("Received chat request with {} messages", payload.messages.len());
 
     let orchestrator = MakerOrchestrator::new(Arc::new(state.clone()));
-    
+
     match orchestrator.run(payload).await {
         Ok(response) => Json(response),
         Err(err) => {
             eprintln!("Error handling chat request via orchestrator: {}", err);
             Json(ChatResponse {
-                message: Message {
-                    role: Role::System,
-                    content: format!("Error: {}", err),
-                },
+                message: Message { role: Role::System, content: format!("Error: {}", err) },
                 status: ExecutionStatus::Failed,
                 maker_context: None,
             })

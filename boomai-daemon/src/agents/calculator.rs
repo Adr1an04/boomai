@@ -1,4 +1,6 @@
-use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role, ExecutionStatus, ModelProvider};
+use crate::core::{
+    Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, ModelProvider, Role,
+};
 use async_trait::async_trait;
 use std::sync::{Arc, RwLock};
 
@@ -14,9 +16,13 @@ impl CalculatorAgent {
 
 #[async_trait]
 impl Agent for CalculatorAgent {
-    async fn handle_chat(&self, req: ChatRequest, _ctx: AgentContext) -> anyhow::Result<ChatResponse> {
+    async fn handle_chat(
+        &self,
+        req: ChatRequest,
+        _ctx: AgentContext,
+    ) -> anyhow::Result<ChatResponse> {
         let mut messages = req.messages.clone();
-        
+
         messages.insert(0, Message {
             role: Role::System,
             content: "You are a Calculator. Perform the math requested. Output ONLY the calculation and the result. No chatter.".to_string(),
@@ -38,4 +44,3 @@ impl Agent for CalculatorAgent {
         Ok(response)
     }
 }
-

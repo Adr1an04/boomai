@@ -109,4 +109,3 @@ pub struct InstalledLocalModel {
     pub port: u16,
     pub runtime_type: String,
 }
-

@@ -1,3 +1,3 @@
-pub mod types;
 pub mod client;
 pub mod manager;
+pub mod types;

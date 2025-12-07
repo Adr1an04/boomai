@@ -11,15 +11,18 @@ pub struct McpManager {
 
 impl McpManager {
     pub fn new() -> Self {
-        Self {
-            clients: Arc::new(RwLock::new(HashMap::new())),
-        }
+        Self { clients: Arc::new(RwLock::new(HashMap::new())) }
     }
 
-    pub async fn add_client(&self, id: String, command: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn add_client(
+        &self,
+        id: String,
+        command: &str,
+        args: &[&str],
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let client = McpClient::new(command, args).await?;
         client.initialize().await?;
-        
+
         let mut clients = self.clients.write().await;
         clients.insert(id, Arc::new(client));
         Ok(())
@@ -29,11 +32,9 @@ impl McpManager {
         let clients = self.clients.read().await;
         clients.get(id).cloned()
     }
-    
+
     pub async fn list_clients(&self) -> Vec<String> {
         let clients = self.clients.read().await;
         clients.keys().cloned().collect()
     }
-
 }
-

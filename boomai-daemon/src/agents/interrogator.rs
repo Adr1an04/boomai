@@ -1,4 +1,6 @@
-use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role, ExecutionStatus, ModelProvider};
+use crate::core::{
+    Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, ModelProvider, Role,
+};
 use async_trait::async_trait;
 use std::sync::{Arc, RwLock};
 
@@ -14,9 +16,13 @@ impl InterrogatorAgent {
 
 #[async_trait]
 impl Agent for InterrogatorAgent {
-    async fn handle_chat(&self, req: ChatRequest, _ctx: AgentContext) -> anyhow::Result<ChatResponse> {
+    async fn handle_chat(
+        &self,
+        req: ChatRequest,
+        _ctx: AgentContext,
+    ) -> anyhow::Result<ChatResponse> {
         let mut messages = req.messages.clone();
-        
+
         messages.insert(0, Message {
             role: Role::System,
             content: "You are the Interrogator Agent. Your job is to decide if the task is fully solved.
@@ -42,4 +48,3 @@ Review the history.
         Ok(response)
     }
 }
-

@@ -1,39 +1,39 @@
+use crate::core::{HttpProvider, ModelProvider};
 use axum::{
     routing::{get, post},
     Router,
 };
-use crate::core::{HttpProvider, ModelProvider};
 use std::sync::{Arc, RwLock};
 use tokio::sync::RwLock as TokioRwLock;
 
-mod config;
-mod handlers;
-mod state;
-mod system;
-mod local;
-mod mcp;
 mod agents;
+mod config;
 mod config_persistence;
 mod core;
+mod handlers;
+mod local;
+mod mcp;
+mod state;
+mod system;
 
+use agents::calculator::CalculatorAgent;
+use agents::classifier::ClassifierAgent;
+use agents::decomposer::DecomposerAgent;
+use agents::interrogator::InterrogatorAgent;
+use agents::router::RouterAgent;
+use agents::verifier::VerifierAgent;
 use config::Config;
+use config_persistence::{config_exists, load_config, save_config, DaemonConfigStore};
 use handlers::{
     chat_handler, config_local_available_models, config_local_install_model,
     config_local_installed_models, config_local_uninstall_model, config_mcp_server_add,
-    config_mcp_servers_list, config_mcp_tools_list, config_model_save, config_model_test,
-    config_model_reload, config_model_rollback,
-    health_check, system_profile_handler, system_recommendation_handler, version_check,
+    config_mcp_servers_list, config_mcp_tools_list, config_model_reload, config_model_rollback,
+    config_model_save, config_model_test, health_check, system_profile_handler,
+    system_recommendation_handler, version_check,
 };
-use state::AppState;
 use local::LocalModelManager;
 use mcp::manager::McpManager;
-use agents::decomposer::DecomposerAgent;
-use agents::router::RouterAgent;
-use agents::verifier::VerifierAgent;
-use agents::classifier::ClassifierAgent;
-use agents::calculator::CalculatorAgent;
-use agents::interrogator::InterrogatorAgent;
-use config_persistence::{load_config, DaemonConfigStore, config_exists, save_config};
+use state::AppState;
 
 #[tokio::main]
 async fn main() {
@@ -120,14 +120,14 @@ async fn main() {
 
     println!("Listening on http://{}", config.addr);
 
-    let listener = tokio::net::TcpListener::bind(config.addr)
-        .await
-        .unwrap_or_else(|e| {
-            eprintln!(
-                "Failed to bind to {}: {}\nHint: Port might be in use. Try: lsof -i :{}",
-                config.addr, e, config.addr.port()
-            );
-            std::process::exit(1);
-        });
+    let listener = tokio::net::TcpListener::bind(config.addr).await.unwrap_or_else(|e| {
+        eprintln!(
+            "Failed to bind to {}: {}\nHint: Port might be in use. Try: lsof -i :{}",
+            config.addr,
+            e,
+            config.addr.port()
+        );
+        std::process::exit(1);
+    });
     axum::serve(listener, app).await.unwrap();
 }

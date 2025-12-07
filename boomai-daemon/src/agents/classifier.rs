@@ -1,4 +1,6 @@
-use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, Role, ExecutionStatus, ModelProvider};
+use crate::core::{
+    Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, ModelProvider, Role,
+};
 use async_trait::async_trait;
 use std::sync::{Arc, RwLock};
 
@@ -14,9 +16,13 @@ impl ClassifierAgent {
 
 #[async_trait]
 impl Agent for ClassifierAgent {
-    async fn handle_chat(&self, req: ChatRequest, _ctx: AgentContext) -> anyhow::Result<ChatResponse> {
+    async fn handle_chat(
+        &self,
+        req: ChatRequest,
+        _ctx: AgentContext,
+    ) -> anyhow::Result<ChatResponse> {
         let mut messages = req.messages.clone();
-        
+
         messages.insert(0, Message {
             role: Role::System,
             content: "Classify the request as SIMPLE, COMPLEX, or TOOL. Output the category name ONLY. Do not write a sentence.".to_string(),
@@ -36,7 +42,7 @@ impl Agent for ClassifierAgent {
         // We use a fresh context or pass through? For now simple call.
         // We expect a simple string response.
         let response = provider.chat(classify_req).await?;
-        
+
         // We just return the classification in the content
         Ok(ChatResponse {
             message: response.message,
@@ -45,4 +51,3 @@ impl Agent for ClassifierAgent {
         })
     }
 }
-
