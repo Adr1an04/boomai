@@ -101,7 +101,7 @@ impl LocalModelManager {
         // use the ollama pull command
         if model.runtime_type == "ollama" {
             let pull_result = Command::new("ollama")
-                .args(&["pull", &model_id])
+                .args(["pull", model_id])
                 .output()
                 .await
                 .map_err(|e| format!("Failed to run ollama pull: {}", e))?;
@@ -135,7 +135,7 @@ impl LocalModelManager {
 
         // remove from Ollama
         let remove_result = Command::new("ollama")
-            .args(&["rm", model_id])
+            .args(["rm", model_id])
             .output()
             .await
             .map_err(|e| format!("Failed to run ollama rm: {}", e))?;
