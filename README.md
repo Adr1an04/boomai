@@ -99,8 +99,11 @@ brew install ollama
 # Start Ollama service
 ollama serve
 
-**2. Run the backend daemon**
+# Pull a model
+ollama pull llama2:7b   # or another model
+```
 
+**2. Run the backend daemon**
 ```bash
 # From project root
 export BOOMAI_PORT=3030
@@ -108,7 +111,6 @@ cargo run -p boomai-daemon
 ```
 
 **3. Run the desktop app**
-
 ```bash
 cd desktop
 npm install
@@ -116,6 +118,20 @@ npm run tauri dev
 ```
 
 The desktop client will automatically connect to the daemon at `localhost:3030`.
+
+---
+
+## Contributing and What to Read First
+
+1. Start with `docs/overview.md` for the problem/solution framing.
+2. Read `docs/architecture.md` for components, core types, and orchestration flow.
+3. Follow `docs/setup.md` to run daemon + desktop locally.
+4. See `docs/contributing.md` for workflow, style notes, and testing targets.
+5. Check `docs/FUTURE.md` for the roadmap (concurrency refactor, MAKER scaling, MCP/RAG plans).
+
+Fast checks before PRs:
+- `cargo check -p boomai-daemon`
+- Run daemon + desktop and smoke a chat request.
 
 ---
 
