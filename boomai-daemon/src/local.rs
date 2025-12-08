@@ -1,5 +1,5 @@
 use crate::core::{AvailableLocalModel, InstalledLocalModel};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use tokio::process::Command;
 
@@ -60,16 +60,6 @@ pub fn get_available_models() -> Vec<AvailableLocalModel> {
             id: "gpt-oss:20b".to_string(),
             name: "GPT-OSS 20B".to_string(),
             description: "OpenAI's open-weight model with configurable reasoning levels. Excellent for agentic tasks, chain-of-thought reasoning, and complex problem solving".to_string(),
-            size_gb: 44.0, // 22B params with MXFP4 quantization
-            recommended_ram_gb: 16, // Can run within 16GB memory
-            download_url: "ollama:gpt-oss:20b".to_string(),
-            local_port: 11434,
-            runtime_type: "ollama".to_string(),
-        },
-        AvailableLocalModel {
-            id: "gpt-oss:20b".to_string(),
-            name: "GPT-OSS 20B".to_string(),
-            description: "OpenAI's open-weight model with configurable reasoning levels. Excellent for agentic tasks, chain-of-thought reasoning, and complex problem solving".to_string(),
             size_gb: 44.0,
             recommended_ram_gb: 16,
             download_url: "ollama:gpt-oss:20b".to_string(),
@@ -87,6 +77,48 @@ pub struct LocalModelManager {
 impl LocalModelManager {
     pub fn new() -> Self {
         Self { installed_models: Arc::new(Mutex::new(HashMap::new())) }
+    }
+
+    /// Refresh installed_models from Ollama so models persist across daemon restarts.
+    pub async fn sync_with_ollama(&self) -> Result<(), String> {
+        let output = Command::new("ollama")
+            .args(["list"])
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run ollama list: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("ollama list failed: {}", stderr.trim()));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut discovered = HashSet::new();
+        for line in stdout.lines() {
+            if let Some(model_id) = line.split_whitespace().next() {
+                discovered.insert(model_id.to_string());
+            }
+        }
+
+        let available_models = get_available_models();
+        let mut models =
+            self.installed_models.lock().map_err(|e| format!("Lock poisoned: {}", e))?;
+        models.clear();
+
+        for model_id in discovered {
+            if let Some(avail) = available_models.iter().find(|m| m.id == model_id) {
+                let installed = InstalledLocalModel {
+                    model_id: model_id.clone(),
+                    install_path: format!("ollama:{}", model_id),
+                    is_running: false,
+                    port: avail.local_port,
+                    runtime_type: avail.runtime_type.clone(),
+                };
+                models.insert(model_id, installed);
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn install_model(&self, model_id: &str) -> Result<(), String> {

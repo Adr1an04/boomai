@@ -7,6 +7,7 @@ use axum::{
     Json,
 };
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::agents::MakerOrchestrator;
@@ -133,8 +134,13 @@ pub async fn config_model_rollback(
     }
 }
 
-pub async fn config_local_available_models() -> Json<Value> {
-    let models = crate::local::get_available_models();
+pub async fn config_local_available_models(State(state): State<AppState>) -> Json<Value> {
+    let installed_ids: HashSet<String> =
+        state.local_manager.get_installed_models().iter().map(|m| m.model_id.clone()).collect();
+    let models: Vec<_> = crate::local::get_available_models()
+        .into_iter()
+        .filter(|m| !installed_ids.contains(&m.id))
+        .collect();
     Json(json!({ "models": models }))
 }
 

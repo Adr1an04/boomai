@@ -65,6 +65,9 @@ async fn main() {
     let provider_lock = Arc::new(RwLock::new(provider.clone()));
 
     let local_manager = LocalModelManager::new();
+    if let Err(e) = local_manager.sync_with_ollama().await {
+        eprintln!("Warning: could not sync installed models from Ollama: {}", e);
+    }
     let mcp_manager = McpManager::new();
 
     let decomposer_agent = Arc::new(DecomposerAgent::new(provider_lock.clone()));

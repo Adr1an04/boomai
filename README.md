@@ -130,8 +130,22 @@ The desktop client will automatically connect to the daemon at `localhost:3030`.
 5. Check `docs/FUTURE.md` for the roadmap (concurrency refactor, MAKER scaling, MCP/RAG plans).
 
 Fast checks before PRs:
+- `cargo fmt --all`
+- `cargo clippy -p boomai-daemon -- -D warnings`
 - `cargo check -p boomai-daemon`
+- (if feasible) `cargo test --workspace`
+- Frontend: `cd desktop && npm run lint`
 - Run daemon + desktop and smoke a chat request.
+
+---
+
+## Data Persistence
+- Daemon config lives at:
+  - macOS: `~/Library/Application Support/boomai/config.json`
+  - Linux: `~/.config/boomai/config.json`
+  - Windows: `%APPDATA%\\boomai\\config.json`
+- The file holds active model settings and up to 5 backups; `api_key` may be present in plaintext. Scrub or exclude it if backing up.
+- Model binaries are managed by Ollama in its cache (e.g., `~/.ollama`). Remove with `ollama rm <model>` to reclaim space.
 
 ---
 

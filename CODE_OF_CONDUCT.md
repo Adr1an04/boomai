@@ -1,6 +1,8 @@
 # Contributor Code of Conduct
 
-I want this to be a welcoming, harassment-free place to collaborate.
+This has quickly turned into a passion project for me and I want it to be a safe space for other developers to add and most importantly learn. 
+
+<img src="docs/assets/boomaiBlue.png" alt="Boomai" width="80%">
 
 ## Expectations
 - Be respectful, constructive, and patient.
