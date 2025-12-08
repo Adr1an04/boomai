@@ -15,19 +15,98 @@ impl MakerOrchestrator {
     }
 
     pub async fn run(&self, initial_req: ChatRequest) -> anyhow::Result<ChatResponse> {
+        // Pull the latest user text for deterministic pre-flight routing.
+        let user_text =
+            initial_req.messages.last().map(|m| m.content.to_lowercase()).unwrap_or_default();
+
+        // Hard heuristics before invoking the classifier to avoid LLM chatter.
+        let is_math_like = {
+            let t = user_text.as_str();
+            let has_math_word = t.contains("sum")
+                || t.contains("add")
+                || t.contains("subtract")
+                || t.contains("multiply")
+                || t.contains("divide")
+                || t.contains("calculate")
+                || t.contains("calc ")
+                || t.contains("math")
+                || t.contains("solve")
+                || t.contains("plus")
+                || t.contains("minus")
+                || t.contains("times")
+                || t.contains("power")
+                || t.contains("sqrt");
+
+            // Detect arithmetic operators only when surrounded by digits (avoids "5-step" or "rust + tauri").
+            let bytes = t.as_bytes();
+            let mut has_digit_op_digit = false;
+            for i in 0..bytes.len() {
+                let b = bytes[i];
+                if (b == b'+' || b == b'-' || b == b'*' || b == b'/')
+                    && i > 0
+                    && bytes[i - 1].is_ascii_digit()
+                {
+                    let mut j = i + 1;
+                    while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j].is_ascii_digit() {
+                        has_digit_op_digit = true;
+                        break;
+                    }
+                }
+            }
+
+            has_math_word || has_digit_op_digit
+        };
+
+        let is_structured_plan = {
+            let t = user_text.as_str();
+            let has_steps_word = t.contains("step")
+                || t.contains("steps")
+                || t.contains("checklist")
+                || t.contains("plan")
+                || t.contains("guide");
+            let has_number = t.chars().any(|c| c.is_ascii_digit());
+            has_steps_word && has_number
+        };
+
+        let is_tool_like = user_text.trim_start().starts_with('/');
+
+        if is_tool_like {
+            println!("[MAKER] Pre-flight: tool-like request detected. Routing to TOOL flow.");
+            return self.run_tool_flow(initial_req).await;
+        }
+
+        if is_math_like {
+            println!("[MAKER] Pre-flight: math-like request detected. Routing to SIMPLE flow.");
+            return self.run_simple_flow(initial_req).await;
+        }
+
+        if is_structured_plan {
+            println!("[MAKER] Pre-flight: structured plan detected. Routing to COMPLEX flow.");
+            return self.run_complex_flow(initial_req).await;
+        }
+
+        // Otherwise, fall back to classifier for routing.
         println!("[MAKER] Classifying request...");
         let class_resp =
             self.state.classifier_agent.handle_chat(initial_req.clone(), AgentContext).await?;
 
-        let classification = class_resp.message.content.trim().to_uppercase();
-        println!("[MAKER] Request classified as: {}", classification);
+        let raw_classification = class_resp.message.content.trim();
+        let class_token = raw_classification.split_whitespace().next().unwrap_or("").to_uppercase();
 
-        if classification.contains("SIMPLE") {
-            self.run_simple_flow(initial_req).await
-        } else if classification.contains("TOOL") {
-            self.run_tool_flow(initial_req).await
-        } else {
-            self.run_complex_flow(initial_req).await
+        println!(
+            "[MAKER] Request classified as (raw='{}', token='{}'): {}",
+            raw_classification, class_token, class_token
+        );
+
+        match class_token.as_str() {
+            "SIMPLE" if is_math_like => self.run_simple_flow(initial_req).await,
+            "TOOL" => self.run_tool_flow(initial_req).await,
+            "COMPLEX" => self.run_complex_flow(initial_req).await,
+            // Fallback: route to router/general answer instead of calculator
+            _ => self.run_tool_flow(initial_req).await,
         }
     }
 
