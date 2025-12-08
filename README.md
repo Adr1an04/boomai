@@ -27,6 +27,7 @@ A Rust backend that coordinates agents, manages state, indexing, and exposes an 
 Key points:
 
 - Built with **Axum** and **Tokio** for processing multiple operations simultaneously
+- Tiered execution: deterministic internal stubs (calculator, system time) plus **Maker** as the voting tool for reasoning, all routed by policy
 - Parallel task execution to avoid sequential bottlenecks with other agents
 - OpenAI style JSON over HTTP through a unified provider abstraction
 
@@ -46,11 +47,12 @@ Tooling is powered by the **Model Context Protocol (MCP)** so external services 
 
 ## MAKER & MDAP: AI Agent Reliability 
 
-Boomai applies **Massively Decomposed Agentic Processes (MDAP)** to reduce errors with smaller models.
+Boomai applies **Massively Decomposed Agentic Processes (MDAP)** to reduce errors with smaller models, and treats **Maker** as a first-class tool built from the MAD/Maker documentation.
 
 1. **Small Action Steps** – Tasks are decomposed into small actions to limit context drift.
-2. **Parallel Voting** – Multiple agents run in parallel; progress advances only when a candidate leads via voting.
+2. **Parallel Voting (Maker tool)** – Multiple candidates run in parallel; progress advances when one answer is ahead-by-k.
 3. **Structural Validation** – Outputs are checked for format and size; suspicious responses are retried before they affect downstream steps.
+4. **Tiered Reliability** – Deterministic lanes use internal stubs; probabilistic steps use Maker; single-probe remains for low-risk fallbacks.
 
 ---
 

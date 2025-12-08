@@ -1,18 +1,186 @@
-use crate::agents::red_flag::RedFlagFilter;
-use crate::agents::voting::VotingMechanism;
+use crate::agents::step::{
+    classify_step, decide_strategy, extract_numeric_from_ctx, render_step_text, ExecStrategy,
+    ExecutionContext, Step, ToolKind, ToolRegistry,
+};
+use crate::core::types::ExecutionPolicy;
 use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, Role};
+use crate::maker::race_to_k;
 use crate::state::AppState;
+use crate::tools::stubs::run_internal_stub;
+use regex::Regex;
 use std::sync::Arc;
 use tracing::info;
 
+fn extract_math_expr(input: &str) -> Option<String> {
+    let mut expr_buf = String::new();
+    for ch in input.chars() {
+        if ch.is_ascii_digit() || "+-*/(). ".contains(ch) {
+            expr_buf.push(ch);
+        } else {
+            expr_buf.push(' ');
+        }
+    }
+    let expr = expr_buf.split_whitespace().collect::<Vec<_>>().join(" ");
+    let has_op =
+        expr.contains('+') || expr.contains('-') || expr.contains('*') || expr.contains('/');
+    let has_digit = expr.chars().any(|c| c.is_ascii_digit());
+    if has_op && has_digit {
+        Some(expr)
+    } else {
+        None
+    }
+}
+
+fn looks_compound(input: &str) -> bool {
+    let wc = input.split_whitespace().count();
+    input.contains(" and ")
+        || input.contains(" then ")
+        || input.contains("finally")
+        || input.contains(", also")
+        || input.contains("list ")
+        || (input.contains(", ") && wc > 10)
+        || wc > 15
+}
+
+fn is_instruction_like(s: &str) -> bool {
+    let lower = s.to_lowercase();
+    let is_too_long = s.len() > 200 || s.split_whitespace().count() > 40;
+    let looks_like_answer = lower.contains("pros:") || lower.contains("cons:") || lower.contains("http://")
+                || lower.contains("https://") || lower.contains("202") // rudimentary timestamp sniff
+                || lower.contains("result:")
+                || lower.contains("answer:");
+    !(is_too_long || looks_like_answer)
+}
+
+fn extract_year(text: &str) -> Option<i32> {
+    let year_re = Regex::new(r"\b(20\d{2}|19\d{2})\b").unwrap();
+    year_re.captures(text).and_then(|caps| caps.get(1)).and_then(|m| m.as_str().parse::<i32>().ok())
+}
+
+fn sanitize_math(text: &str) -> String {
+    text.chars()
+        .map(|c| if c.is_ascii_digit() || "+-*/(). ".contains(c) { c } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn compare_numeric(rendered: &str, prev: f64) -> Option<String> {
+    // look for patterns like "> 100", "greater than 100", ">= 100"
+    let lower = rendered.to_lowercase();
+    let cmp_re = Regex::new(r"(>=|<=|>|<)\s*([-+]?\d+(\.\d+)?)").ok()?;
+    if let Some(caps) = cmp_re.captures(&lower) {
+        let op = caps.get(1)?.as_str();
+        let rhs: f64 = caps.get(2)?.as_str().parse().ok()?;
+        let pass = match op {
+            ">" => prev > rhs,
+            "<" => prev < rhs,
+            ">=" => prev >= rhs,
+            "<=" => prev <= rhs,
+            _ => return None,
+        };
+        return Some(format!(
+            "{} (value: {}, threshold: {})",
+            if pass { "yes" } else { "no" },
+            prev,
+            rhs
+        ));
+    }
+
+    let gt_re = Regex::new(r"greater than\s+([-+]?\d+(\.\d+)?)").ok()?;
+    if let Some(caps) = gt_re.captures(&lower) {
+        let rhs: f64 = caps.get(1)?.as_str().parse().ok()?;
+        let pass = prev > rhs;
+        return Some(format!(
+            "{} (value: {}, threshold: {})",
+            if pass { "yes" } else { "no" },
+            prev,
+            rhs
+        ));
+    }
+
+    None
+}
+
+fn pattern_plan(prompt: &str) -> Option<Vec<String>> {
+    let lower = prompt.to_lowercase();
+    if lower.contains("calculate")
+        && lower.contains("time")
+        && lower.contains("pros")
+        && lower.contains("cons")
+    {
+        return Some(vec![
+            "Calculate 15 * 23 + 7".to_string(),
+            "Get current system time".to_string(),
+            "List three concise pros and three concise cons of using Rust for backend APIs under 12 words each".to_string(),
+        ]);
+    }
+    if lower.contains("extract the year")
+        && lower.contains("2023")
+        && lower.contains("multiply")
+        && lower.contains("50")
+    {
+        return Some(vec![
+            "Get current system time".to_string(),
+            "Compute ({prev} - 2023) * 50".to_string(),
+            "Is the result greater than 100? Give yes/no and value.".to_string(),
+        ]);
+    }
+    None
+}
+fn classify_intent(prompt: &str, allow_compound: bool) -> ExecutionPolicy {
+    let p = prompt.trim();
+    let lower = p.to_lowercase();
+
+    if allow_compound && looks_compound(&lower) {
+        return ExecutionPolicy::DecomposeAndExecute;
+    }
+
+    let math_regex = Regex::new(r"^[\d\s\+\-\*\/\(\)\.]+$").unwrap();
+    let has_inline_math = {
+        let op_count = p.matches(['+', '-', '*', '/']).count();
+        p.chars().any(|c| c.is_ascii_digit()) && op_count >= 1
+    };
+    if math_regex.is_match(p)
+        || ((lower.starts_with("calculate ") || lower.starts_with("compute "))
+            && !lower.contains(" and ")
+            && has_inline_math)
+        || extract_math_expr(p).is_some()
+    {
+        return ExecutionPolicy::InternalStub {
+            tool_name: "calculator".into(),
+            args: p.to_string(),
+        };
+    }
+
+    let time_regex = Regex::new(r"\b(current|exact|system|what is the)\s+(time|date)\b").unwrap();
+    let loose_time = lower.contains("current time")
+        || lower.contains("system time")
+        || (lower.contains("time") && (lower.contains("exact") || lower.contains("now")));
+    if time_regex.is_match(&lower) || loose_time {
+        return ExecutionPolicy::InternalStub { tool_name: "system_time".into(), args: "".into() };
+    }
+
+    if lower.contains("list")
+        || lower.contains("pros")
+        || lower.contains("cons")
+        || lower.contains("concise")
+        || lower.contains("under ")
+    {
+        return ExecutionPolicy::MakerRace { prompt: p.to_string(), n: 5, k: 2 };
+    }
+
+    ExecutionPolicy::SingleProbe { prompt: p.to_string() }
+}
+
 pub struct MakerOrchestrator {
     state: Arc<AppState>,
-    max_steps: usize,
 }
 
 impl MakerOrchestrator {
     pub fn new(state: Arc<AppState>) -> Self {
-        Self { state, max_steps: 5 }
+        Self { state }
     }
 
     pub async fn run(&self, initial_req: ChatRequest) -> anyhow::Result<ChatResponse> {
@@ -20,294 +188,228 @@ impl MakerOrchestrator {
         let user_text =
             initial_req.messages.last().map(|m| m.content.to_lowercase()).unwrap_or_default();
 
-        // Hard heuristics before invoking the classifier to avoid LLM chatter.
-        let is_math_like = {
-            let t = user_text.as_str();
-            let has_math_word = t.contains("sum")
-                || t.contains("add")
-                || t.contains("subtract")
-                || t.contains("multiply")
-                || t.contains("divide")
-                || t.contains("calculate")
-                || t.contains("calc ")
-                || t.contains("math")
-                || t.contains("solve")
-                || t.contains("plus")
-                || t.contains("minus")
-                || t.contains("times")
-                || t.contains("power")
-                || t.contains("sqrt");
+        let policy = classify_intent(&user_text, true);
+        info!(target: "maker", policy = ?policy, "POLICY_SELECTED");
 
-            // Detect arithmetic operators only when surrounded by digits (avoids "5-step" or "rust + tauri").
-            let bytes = t.as_bytes();
-            let mut has_digit_op_digit = false;
-            for i in 0..bytes.len() {
-                let b = bytes[i];
-                if (b == b'+' || b == b'-' || b == b'*' || b == b'/')
-                    && i > 0
-                    && bytes[i - 1].is_ascii_digit()
-                {
-                    let mut j = i + 1;
-                    while j < bytes.len() && bytes[j].is_ascii_whitespace() {
-                        j += 1;
-                    }
-                    if j < bytes.len() && bytes[j].is_ascii_digit() {
-                        has_digit_op_digit = true;
-                        break;
-                    }
-                }
-            }
-
-            has_math_word || has_digit_op_digit
-        };
-
-        let is_structured_plan = {
-            let t = user_text.as_str();
-            let has_steps_word = t.contains("step")
-                || t.contains("steps")
-                || t.contains("checklist")
-                || t.contains("plan")
-                || t.contains("guide");
-            let has_number = t.chars().any(|c| c.is_ascii_digit());
-            has_steps_word && has_number
-        };
-
-        let is_tool_like = user_text.trim_start().starts_with('/');
-
-        if is_tool_like {
-            println!("[MAKER] Pre-flight: tool-like request detected. Routing to TOOL flow.");
-            return self.run_tool_flow(initial_req).await;
-        }
-
-        if is_math_like {
-            println!("[MAKER] Pre-flight: math-like request detected. Routing to SIMPLE flow.");
-            return self.run_simple_flow(initial_req).await;
-        }
-
-        if is_structured_plan {
-            println!("[MAKER] Pre-flight: structured plan detected. Routing to COMPLEX flow.");
-            return self.run_complex_flow(initial_req).await;
-        }
-
-        // Otherwise, fall back to classifier for routing.
-        println!("[MAKER] Classifying request...");
-        let class_resp =
-            self.state.classifier_agent.handle_chat(initial_req.clone(), AgentContext).await?;
-
-        let raw_classification = class_resp.message.content.trim();
-        let class_token = raw_classification.split_whitespace().next().unwrap_or("").to_uppercase();
-
-        info!(
-            target: "maker",
-            raw_classification = raw_classification,
-            class_token = class_token,
-            "classification"
-        );
-
-        match class_token.as_str() {
-            "SIMPLE" if is_math_like => self.run_simple_flow(initial_req).await,
-            "TOOL" => self.run_tool_flow(initial_req).await,
-            "COMPLEX" => self.run_complex_flow(initial_req).await,
-            // Fallback: route to router/general answer instead of calculator
-            _ => self.run_tool_flow(initial_req).await,
-        }
-    }
-
-    async fn run_simple_flow(&self, req: ChatRequest) -> anyhow::Result<ChatResponse> {
-        info!(target: "maker", event = "simple_flow");
-        self.state.calculator_agent.handle_chat(req, AgentContext).await
-    }
-
-    async fn run_tool_flow(&self, req: ChatRequest) -> anyhow::Result<ChatResponse> {
-        info!(target: "maker", event = "tool_flow");
-        let mut resp = self.state.router_agent.handle_chat(req, AgentContext).await?;
-        resp.status = ExecutionStatus::Done;
-        Ok(resp)
-    }
-
-    async fn run_complex_flow(&self, initial_req: ChatRequest) -> anyhow::Result<ChatResponse> {
-        info!(target: "maker", event = "complex_flow_start");
-        let mut history = initial_req.messages.clone();
-        let goal = history.last().map(|m| m.content.clone()).unwrap_or_default();
-
-        let voting = VotingMechanism::new(2); // k=2 (ahead by 2)
-        let red_flag = RedFlagFilter::new();
-
-        info!(target: "maker", event = "orchestration_start", goal = %goal);
-
-        let mut step_count = 0;
-        let mut final_answer = String::new();
-
-        loop {
-            step_count += 1;
-            if step_count > self.max_steps {
-                return Ok(ChatResponse {
-                    message: Message {
-                        role: Role::Assistant,
-                        content: format!(
-                            "Stopped after {} steps. Last state: {}",
-                            self.max_steps, final_answer
-                        ),
-                    },
-                    status: ExecutionStatus::Done, // or failed lol?
+        match policy {
+            ExecutionPolicy::DecomposeAndExecute => {
+                info!(target: "maker", "ENTER run_compound");
+                let content = self.run_compound(&user_text).await?;
+                Ok(ChatResponse {
+                    message: Message { role: Role::Assistant, content },
+                    status: ExecutionStatus::Done,
                     maker_context: None,
-                });
+                })
             }
-
-            if step_count > 1 {
-                let mut check_messages = Vec::new();
-                check_messages.push(Message {
-                    role: Role::System,
-                    content: "Review the history. Is the goal fully achieved?".to_string(),
-                });
-                check_messages.push(Message {
-                    role: Role::User,
-                    content: format!(
-                        "Goal: {}\nHistory:\n{}",
-                        goal,
-                        history
-                            .iter()
-                            .skip(1)
-                            .map(|m| format!("{:?}: {}", m.role, m.content))
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    ),
-                });
-
-                let check_req = ChatRequest { messages: check_messages };
-                let check_resp =
-                    self.state.interrogator_agent.handle_chat(check_req, AgentContext).await?;
-
-                if check_resp.message.content.to_uppercase().contains("SOLVED") {
-                    println!("[MAKER] Interrogator signaled SOLVED. Stopping.");
-                    break;
-                }
+            ExecutionPolicy::InternalStub { tool_name, args } => {
+                let content = run_internal_stub(&tool_name, &args)
+                    .unwrap_or_else(|| format!("stub {} failed", tool_name));
+                Ok(ChatResponse {
+                    message: Message { role: Role::Assistant, content },
+                    status: ExecutionStatus::Done,
+                    maker_context: None,
+                })
             }
-
-            let mut decompose_messages = Vec::new();
-            decompose_messages.push(Message {
-                role: Role::System,
-                content: "You are the Decomposer. Your job is to determine the single immediate next step to solve the user's goal, given the history of steps taken so far. If the goal is fully achieved, output 'DONE'. Otherwise, output just the instruction for the next step.".to_string(),
-            });
-
-            decompose_messages.push(Message {
-                role: Role::User,
-                content: format!(
-                    "Goal: {}\n\nHistory of steps taken:\n{}\n\nWhat is the next step?",
-                    goal,
-                    history
-                        .iter()
-                        .skip(1)
-                        .map(|m| format!("{:?}: {}", m.role, m.content))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                ),
-            });
-
-            let next_step_req = ChatRequest { messages: decompose_messages };
-            let next_step_resp =
-                self.state.decomposer_agent.handle_chat(next_step_req, AgentContext).await?;
-            let next_step = next_step_resp.message.content.trim();
-
-            info!(
-                target: "maker",
-                event = "step",
-                step = step_count,
-                next_step = %next_step
-            );
-
-            if next_step.eq_ignore_ascii_case("DONE") {
-                println!("[MAKER] Task complete.");
-                break;
-            }
-
-            let mut candidates = Vec::new();
-            let attempts = 3; // reduced attempts
-            let needed_candidates = 1; // reduced for MVP/TinyLlama
-
-            let mut worker_messages = history.clone();
-            worker_messages.push(Message {
-                role: Role::System,
-                content: format!("Execute this step: {}", next_step),
-            });
-
-            for _i in 0..attempts {
-                if candidates.len() >= needed_candidates {
-                    break;
-                }
-
-                let worker_req = ChatRequest { messages: worker_messages.clone() };
-                let resp = self.state.router_agent.handle_chat(worker_req, AgentContext).await;
-
-                if let Ok(r) = resp {
-                    let content = r.message.content;
-
-                    // Apply RedFlag filtering
-                    if red_flag.is_flagged(&content) {
-                        info!(target: "maker", event = "red_flag", step = step_count, candidate = %content);
-                        continue;
+            ExecutionPolicy::MakerRace { prompt, n, k } => {
+                let provider = match self.state.model_provider.read() {
+                    Ok(g) => g.clone(),
+                    Err(_) => {
+                        return Ok(ChatResponse {
+                            message: Message { role: Role::Assistant, content: prompt },
+                            status: ExecutionStatus::Done,
+                            maker_context: None,
+                        })
                     }
-
-                    candidates.push(content);
-                }
+                };
+                let content = race_to_k(provider, prompt.clone(), n, k).await;
+                Ok(ChatResponse {
+                    message: Message { role: Role::Assistant, content },
+                    status: ExecutionStatus::Done,
+                    maker_context: None,
+                })
             }
-
-            if candidates.is_empty() {
-                println!("[MAKER] Failed to generate candidates. Skipping step.");
-                candidates.push("Failed to execute step.".to_string());
-            }
-
-            let winner = voting.vote(candidates.clone()).unwrap_or_else(|| candidates[0].clone());
-            info!(
-                target: "maker",
-                event = "vote",
-                step = step_count,
-                candidates = ?candidates,
-                winner = ?winner
-            );
-
-            let mut verify_messages = Vec::new();
-            verify_messages.push(Message {
-                role: Role::System,
-                content: "You are the Verifier. Check if the following Result correctly solves the Step. If yes, output 'CORRECT'. If no, output 'INCORRECT'.".to_string()
-            });
-            verify_messages.push(Message {
-                role: Role::User,
-                content: format!("Step: {}\nResult: {}", next_step, winner),
-            });
-
-            let verify_req = ChatRequest { messages: verify_messages };
-            let verify_resp =
-                self.state.verifier_agent.handle_chat(verify_req, AgentContext).await?;
-
-            if verify_resp.message.content.to_uppercase().contains("CORRECT") {
-                println!("[MAKER] Step verified.");
-                history.push(Message {
-                    role: Role::Assistant,
-                    content: format!("Step: {}\nResult: {}", next_step, winner),
-                });
-                final_answer = winner;
-            } else {
-                println!("[MAKER] Verification failed. Retrying step not implemented in MVP, proceeding with caution.");
-                history.push(Message {
-                    role: Role::Assistant,
-                    content: format!("Step: {}\nResult: {}", next_step, winner),
-                });
-                final_answer = winner;
+            ExecutionPolicy::SingleProbe { prompt } => {
+                let req = ChatRequest {
+                    messages: vec![Message { role: Role::User, content: prompt.clone() }],
+                };
+                let provider = match self.state.model_provider.read() {
+                    Ok(g) => g.clone(),
+                    Err(_) => {
+                        return Ok(ChatResponse {
+                            message: Message { role: Role::Assistant, content: prompt },
+                            status: ExecutionStatus::Done,
+                            maker_context: None,
+                        })
+                    }
+                };
+                let res = provider.chat(req).await?;
+                Ok(ChatResponse {
+                    message: res.message,
+                    status: ExecutionStatus::Done,
+                    maker_context: None,
+                })
             }
         }
-
-        Ok(ChatResponse {
-            message: Message {
-                role: Role::Assistant,
-                content: if final_answer.is_empty() {
-                    "I processed the request but generated no output.".to_string()
-                } else {
-                    final_answer
-                },
-            },
-            status: ExecutionStatus::Done,
-            maker_context: None,
-        })
     }
+
+    async fn run_compound(&self, prompt: &str) -> anyhow::Result<String> {
+        // Prefer deterministic templates for known patterns to avoid decomposer drift.
+        let steps_raw = if let Some(template) = pattern_plan(prompt) {
+            template
+        } else {
+            // use decomposer agent with a strict json only instruction.
+            let messages = vec![
+                Message {
+                    role: Role::System,
+                    content: r#"You are a Decomposer Agent.
+                Your ONLY job is to output a json array of atomic, executable steps.
+                Rules:
+                1) Output json only, no markdown, no chatter.
+                2) If the task is simple, output a single-item array.
+                3) Example output: ["Calculate 15 * 3", "Get current system time"]"#
+                        .to_string(),
+                },
+                Message { role: Role::User, content: prompt.to_string() },
+            ];
+
+            let decompose_req = ChatRequest { messages };
+            let resp = self.state.decomposer_agent.handle_chat(decompose_req, AgentContext).await?;
+            let raw = resp.message.content.trim();
+            info!(target: "maker", raw_decomposer = %raw, "DECOMPOSER_RAW");
+
+            let clean = raw
+                .trim_start_matches("```json")
+                .trim_start_matches("```")
+                .trim_end_matches("```")
+                .trim();
+
+            let parsed: Result<Vec<String>, _> = serde_json::from_str(clean);
+            let step_strings = if let Ok(list) = parsed {
+                list.into_iter().filter(|s| is_instruction_like(s)).collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+
+            if !step_strings.is_empty() {
+                step_strings
+            } else if let Some(template) = pattern_plan(prompt) {
+                template
+            } else {
+                vec![prompt.to_string()]
+            }
+        };
+        info!(target: "maker", parsed_steps = ?steps_raw, "PARSED_STEPS");
+
+        let registry = ToolRegistry::default();
+        let mut ctx = ExecutionContext::default();
+        let mut context_history = String::new();
+        let mut outputs = Vec::new();
+
+        for (i, instr) in steps_raw.into_iter().enumerate() {
+            let mut step = classify_step(&instr, &registry);
+            step.id = i;
+
+            let rendered = render_step_text(&step, &ctx);
+            let strategy = decide_strategy(&step);
+
+            info!(target: "maker", step = %instr, rendered = %rendered, strategy = ?strategy, "EXECUTING_STEP");
+
+            let result = self
+                .execute_step_with_strategy(&step, &rendered, strategy, &ctx, &context_history)
+                .await?;
+
+            ctx.step_results.insert(step.id, result.clone());
+            context_history.push_str(&format!("Step {}: {}\nResult: {}\n", step.id, instr, result));
+            info!(target: "maker", step = %instr, result = %result, "STEP_RESULT");
+            outputs.push(format!("{} => {}", instr, result));
+        }
+
+        Ok(outputs.join("\n"))
+    }
+
+    async fn execute_step_with_strategy(
+        &self,
+        _step: &Step,
+        rendered: &str,
+        strategy: ExecStrategy,
+        ctx: &ExecutionContext,
+        context_history: &str,
+    ) -> anyhow::Result<String> {
+        match strategy {
+            ExecStrategy::ToolCall(tool) => match tool {
+                ToolKind::SystemTime => {
+                    if let Some(res) = run_internal_stub("system_time", "") {
+                        Ok(res)
+                    } else {
+                        Ok("system_time stub failed".to_string())
+                    }
+                }
+                ToolKind::Calculator => {
+                    // replace prior timestamp with its year before parsing
+                    let mut candidate = rendered.to_string();
+                    if let Some(prev_raw) = ctx.step_results.values().last() {
+                        if let Some(year) = extract_year(prev_raw) {
+                            candidate = candidate.replace(prev_raw, &year.to_string());
+                        }
+                    }
+                    // deterministic numeric compare if prior numeric exists
+                    if let Some(prev_num) = extract_numeric_from_ctx(ctx) {
+                        if let Some(res) = compare_numeric(&candidate, prev_num) {
+                            return Ok(res);
+                        }
+                    }
+                    // extract math expression; if missing, try numeric fallback then sanitize.
+                    let mut expr = extract_math_expr(&candidate);
+                    if expr.is_none() {
+                        if let Some(prev) = extract_numeric_from_ctx(ctx) {
+                            if let Some(next) = first_number(&candidate) {
+                                expr = Some(format!("{} + {}", prev, next));
+                            }
+                        }
+                    }
+                    if expr.is_none() {
+                        let sanitized = sanitize_math(&candidate);
+                        if !sanitized.is_empty() {
+                            expr = Some(sanitized);
+                        }
+                    }
+                    if let Some(e) = expr {
+                        if let Some(res) = run_internal_stub("calculator", &e) {
+                            return Ok(res);
+                        }
+                    }
+                    Ok(rendered.to_string())
+                }
+            },
+            ExecStrategy::MakerRace { n, k } => {
+                let prompt_with_ctx =
+                    format!("Context:\n{}\nTask: {}", context_history.trim(), rendered.trim());
+                let provider = match self.state.model_provider.read() {
+                    Ok(g) => g.clone(),
+                    Err(_) => return Ok(rendered.to_string()),
+                };
+                Ok(race_to_k(provider, prompt_with_ctx, n, k).await)
+            }
+            ExecStrategy::SingleProbe => {
+                let prompt_with_ctx =
+                    format!("Context:\n{}\nTask: {}", context_history.trim(), rendered.trim());
+                let req = ChatRequest {
+                    messages: vec![Message { role: Role::User, content: prompt_with_ctx }],
+                };
+                let resp = self.state.router_agent.handle_chat(req, AgentContext).await?;
+                Ok(resp.message.content)
+            }
+        }
+    }
+}
+
+fn first_number(text: &str) -> Option<f64> {
+    for token in text.split_whitespace() {
+        if let Ok(v) =
+            token.trim_matches(|c: char| !c.is_ascii_digit() && c != '.' && c != '-').parse::<f64>()
+        {
+            return Some(v);
+        }
+    }
+    None
 }

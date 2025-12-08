@@ -1,5 +1,41 @@
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum StepType {
+    Deterministic, // Math, time, system info
+    Probabilistic, // Creative or reasoning-heavy tasks
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub enum StepKind {
+    Math,
+    Time,
+    Creative,
+    #[default]
+    Other,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PlanStep {
+    pub id: usize,
+    pub description: String,
+    pub step_type: StepType,
+    #[serde(default)]
+    pub context_keys: Vec<String>,
+    #[serde(default)]
+    pub kind: StepKind,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum ExecutionPolicy {
+    DecomposeAndExecute,
+    InternalStub { tool_name: String, args: String },
+    SingleProbe { prompt: String },
+    MakerRace { prompt: String, n: usize, k: usize },
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {

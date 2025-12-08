@@ -1,6 +1,6 @@
 # Security
 
-This project will always remain local first unless you choose to outsource your llms to external API's. With that being said please always let me know of any insecurities and I'll be happy to resolve them!
+This project will always remain local first unless you choose to outsource your llms to external API's. Deterministic internal tools (calculator, system time) run locally; probabilistic reasoning uses the Maker voting tool described in the MAD/Maker docs. With that being said please always let me know of any insecurities and I'll be happy to resolve them!
 
 <img src="docs/assets/boomaiSand.png" alt="Boomai" width="80%">
 

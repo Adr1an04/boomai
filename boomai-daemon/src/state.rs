@@ -2,12 +2,8 @@ use crate::core::ModelProvider;
 use std::sync::{Arc, RwLock};
 use tokio::sync::RwLock as TokioRwLock;
 
-use crate::agents::calculator::CalculatorAgent;
-use crate::agents::classifier::ClassifierAgent;
 use crate::agents::decomposer::DecomposerAgent;
-use crate::agents::interrogator::InterrogatorAgent;
 use crate::agents::router::RouterAgent;
-use crate::agents::verifier::VerifierAgent;
 use crate::config_persistence::DaemonConfigStore;
 use crate::local::LocalModelManager;
 use crate::mcp::manager::McpManager;
@@ -22,8 +18,4 @@ pub struct AppState {
     // agents
     pub decomposer_agent: Arc<DecomposerAgent>,
     pub router_agent: Arc<RouterAgent>,
-    pub verifier_agent: Arc<VerifierAgent>,
-    pub classifier_agent: Arc<ClassifierAgent>,
-    pub calculator_agent: Arc<CalculatorAgent>,
-    pub interrogator_agent: Arc<InterrogatorAgent>,
 }

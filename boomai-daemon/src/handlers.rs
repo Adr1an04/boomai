@@ -74,7 +74,7 @@ pub async fn config_model_reload(State(state): State<AppState>) -> Json<Value> {
     let config_store = state.config_store.read().await;
     let active_config = &config_store.active_config;
 
-    // Create new provider with current config
+    // new provider with current config
     let new_provider = Arc::new(HttpProvider::new(
         active_config.base_url.clone(),
         active_config.api_key.clone(),
@@ -262,6 +262,7 @@ pub async fn config_mcp_tools_list(
     }
 }
 
+#[axum::debug_handler]
 pub async fn chat_handler(
     State(state): State<AppState>,
     Json(payload): Json<ChatRequest>,

@@ -1,25 +1,27 @@
 # Boomai
 
-Boomai is a lazy use, local-first AI orchestration engine. It targets the reliability cliff in agentic systems by combining Rust/Tokio concurrency with the a hybrid MAKER framework (Maximal Agentic Decomposition, k-threshold voting, red-flagging).
+Boomai is a lazy use, local-first AI orchestration engine. It targets the reliability cliff in agentic systems by combining Rust/Tokio concurrency with a hybrid MAKER framework (Maximal Agentic Decomposition, k-threshold voting, red-flagging) and a tiered tool stack (deterministic internal stubs + the Maker voting tool from the MAD/Maker docs).
 
 ---
 
 ## The Problem: The Reliability Cliff
 
-Long-horizon agents fail exponentially: a 1% per-step error yields ~63% failure over 100 steps. Larger models are costly, slow, and privacy-hostile. Boomai attacks the problem with architecture, not just model size. Past that it is all locally ran allowing users to use boomai locally and comfortably.
+Long horizon agents fail exponentially: a 1% per-step error yields ~63% failure over 100 steps. Larger models are costly, slow, and privacy hostile. Boomai attacks the problem with architecture, not just model size. Past that it is all locally ran allowing users to use boomai locally and comfortably.
 
 ---
 
 ## The Solution: MAKER
 
 1. **Maximal Decomposition (m=1)**  
-   Break tasks into atomic, single-step units; `DecomposerAgent` isolates context to avoid drift and hallucination loops.
+   Break tasks into atomic, single step units; `DecomposerAgent` isolates context to avoid drift and hallucination loops.
 
-2. **Parallelized Consensus (first-to-ahead-by-k)**  
-   Tokio spawns multiple candidates per step; voting waits until one answer leads the runner-up by k, improving statistical accuracy so smaller models can survive long horizons.
+2. **Parallelized Consensus (first-to-ahead-by-k, Maker tool)**  
+   Tokio spawns multiple candidates per step; voting waits until one answer leads the runner-up by k, improving statistical accuracy so smaller models can survive long horizons. Maker is treated as a tool in the orchestrator.
 
 3. **Structural Red-Flagging**  
    Outputs are filtered for structural pathologies (length, malformed JSON) before voting; “sick” candidates are discarded to prevent correlated errors.
+4. **Tiered Lanes**  
+   Deterministic steps use internal Rust stubs (calculator, system time) via the tool registry; probabilistic steps use Maker or single-probe as needed.
 
 ---
 

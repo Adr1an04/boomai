@@ -12,16 +12,14 @@ mod config_persistence;
 mod core;
 mod handlers;
 mod local;
+mod maker;
 mod mcp;
 mod state;
 mod system;
+mod tools;
 
-use agents::calculator::CalculatorAgent;
-use agents::classifier::ClassifierAgent;
 use agents::decomposer::DecomposerAgent;
-use agents::interrogator::InterrogatorAgent;
 use agents::router::RouterAgent;
-use agents::verifier::VerifierAgent;
 use config::Config;
 use config_persistence::{config_exists, load_config, save_config, DaemonConfigStore};
 use handlers::{
@@ -42,14 +40,14 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
 fn init_tracing() -> Vec<WorkerGuard> {
-    // File appenders (non-blocking) for research logs
+    // File appender
     let maker_appender = rolling::daily("logs", "maker_research.jsonl");
     let (maker_writer, maker_guard) = tracing_appender::non_blocking(maker_appender);
 
     let trace_appender = rolling::hourly("logs", "system_trace.jsonl");
     let (trace_writer, trace_guard) = tracing_appender::non_blocking(trace_appender);
 
-    // Layer: maker-only to dedicated file (JSON)
+    // maker-only to dedicated json
     let maker_file_layer = fmt::layer()
         .with_span_events(FmtSpan::CLOSE)
         .with_ansi(false)
@@ -57,7 +55,7 @@ fn init_tracing() -> Vec<WorkerGuard> {
         .with_writer(maker_writer)
         .with_filter(filter_fn(|meta| meta.target() == "maker"));
 
-    // Layer: everything except maker to system trace file (JSON)
+    // everything except maker
     let trace_file_layer = fmt::layer()
         .with_span_events(FmtSpan::CLOSE)
         .with_ansi(false)
@@ -65,7 +63,6 @@ fn init_tracing() -> Vec<WorkerGuard> {
         .with_writer(trace_writer)
         .with_filter(filter_fn(|meta| meta.target() != "maker"));
 
-    // Layer: stdout, only maker at INFO or below, pretty for console
     let stdout_layer = fmt::layer()
         .pretty()
         .with_target(false)
@@ -82,7 +79,6 @@ fn init_tracing() -> Vec<WorkerGuard> {
 
 #[tokio::main]
 async fn main() {
-    // Initialize structured logging to split by target.
     let _logging_guards = init_tracing();
 
     println!("Boomai core daemon (Rust) starting...");
@@ -117,7 +113,7 @@ async fn main() {
         eprintln!("Warning: could not sync installed models from Ollama: {}", e);
     }
 
-    // Telemetry heartbeat: log CPU/memory periodically for research/diagnostics.
+    // log CPU/memory periodically
     {
         tokio::spawn(async move {
             let mut sys = sysinfo::System::new_all();
@@ -141,10 +137,6 @@ async fn main() {
 
     let decomposer_agent = Arc::new(DecomposerAgent::new(provider_lock.clone()));
     let router_agent = Arc::new(RouterAgent::new(provider_lock.clone()));
-    let verifier_agent = Arc::new(VerifierAgent::new(provider_lock.clone()));
-    let classifier_agent = Arc::new(ClassifierAgent::new(provider_lock.clone()));
-    let calculator_agent = Arc::new(CalculatorAgent::new(provider_lock.clone()));
-    let interrogator_agent = Arc::new(InterrogatorAgent::new(provider_lock.clone()));
 
     let config_store_lock = Arc::new(TokioRwLock::new(config_store));
 
@@ -155,10 +147,6 @@ async fn main() {
         mcp_manager,
         decomposer_agent,
         router_agent,
-        verifier_agent,
-        classifier_agent,
-        calculator_agent,
-        interrogator_agent,
     };
 
     if !config_exists().await {

@@ -1,6 +1,6 @@
 # Contributor Code of Conduct
 
-This has quickly turned into a passion project for me and I want it to be a safe space for other developers to add and most importantly learn. 
+This has quickly turned into a passion project for me and I want it to be a safe space for other developers to add and most importantly learn. We are shipping a tiered toolchain (deterministic stubs + Maker voting tool), so please keep discussions and changes constructive, safety-minded, and respectful when touching shared tooling.
 
 <img src="docs/assets/boomaiBlue.png" alt="Boomai" width="80%">
 

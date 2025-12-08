@@ -8,7 +8,7 @@ This document targets contributors who want to extend or harden the system. Boom
 - **Agents (`src/agents`)**:
   - Classifier, Decomposer, Router, Verifier, Calculator, Interrogator
   - Voting and Red-Flag filters
-  - Orchestrator implementing MDAP/MAKER flows
+  - Orchestrator implementing MDAP/MAKER flows with tiered reliability lanes (deterministic internal stubs + Maker voting tool)
 - **Local Model Manager (`local.rs`)**: Manages Ollama-based model installs and metadata.
 - **MCP (`src/mcp`)**: Client/manager scaffolding for external tool servers with JSON-RPC.
 - **Persistence (`config_persistence.rs`)**: Async config load/save with history and rollback support.
@@ -30,12 +30,12 @@ This document targets contributors who want to extend or harden the system. Boom
 
 ## Orchestration (Hybrid MAKER / MDAP)
 - **Small, Isolated Steps (m=1)**: Decompose tasks into atomic actions (Decomposer) to reduce drift.
-- **Parallel Consensus (ahead-by-k)**: Spawn concurrent candidates; VotingMechanism waits for a lead by k before selecting a winner.
+- **Parallel Consensus (ahead-by-k)**: Spawn concurrent candidates; the Maker tool waits for a lead by k before selecting a winner.
 - **Structural Validation**: Red-Flag filter for pathological outputs; status gating for tool calls and verification.
 - Flows:
-  - SIMPLE → Calculator / direct
-  - TOOL → Router decides tool use
-  - COMPLEX → Full MDAP loop with classification, decomposition, routing, verification
+  - SIMPLE → deterministic internal stubs (calculator/time) or single-probe
+  - TOOL → Router decides tool use via the tool registry
+  - COMPLEX → Full MDAP loop with classification, decomposition, routing, verification, Maker voting for reasoning
 - Context isolation: minimal context passed per step to limit drift.
 
 ## Concurrency
