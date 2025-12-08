@@ -3,6 +3,7 @@ use crate::agents::voting::VotingMechanism;
 use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, Role};
 use crate::state::AppState;
 use std::sync::Arc;
+use tracing::info;
 
 pub struct MakerOrchestrator {
     state: Arc<AppState>,
@@ -96,9 +97,11 @@ impl MakerOrchestrator {
         let raw_classification = class_resp.message.content.trim();
         let class_token = raw_classification.split_whitespace().next().unwrap_or("").to_uppercase();
 
-        println!(
-            "[MAKER] Request classified as (raw='{}', token='{}'): {}",
-            raw_classification, class_token, class_token
+        info!(
+            target: "maker",
+            raw_classification = raw_classification,
+            class_token = class_token,
+            "classification"
         );
 
         match class_token.as_str() {
@@ -111,26 +114,26 @@ impl MakerOrchestrator {
     }
 
     async fn run_simple_flow(&self, req: ChatRequest) -> anyhow::Result<ChatResponse> {
-        println!("[MAKER] Executing SIMPLE flow (Calculator/Direct)...");
+        info!(target: "maker", event = "simple_flow");
         self.state.calculator_agent.handle_chat(req, AgentContext).await
     }
 
     async fn run_tool_flow(&self, req: ChatRequest) -> anyhow::Result<ChatResponse> {
-        println!("[MAKER] Executing TOOL flow (Router)...");
+        info!(target: "maker", event = "tool_flow");
         let mut resp = self.state.router_agent.handle_chat(req, AgentContext).await?;
         resp.status = ExecutionStatus::Done;
         Ok(resp)
     }
 
     async fn run_complex_flow(&self, initial_req: ChatRequest) -> anyhow::Result<ChatResponse> {
-        println!("[MAKER] Executing COMPLEX flow (Full MDAP)...");
+        info!(target: "maker", event = "complex_flow_start");
         let mut history = initial_req.messages.clone();
         let goal = history.last().map(|m| m.content.clone()).unwrap_or_default();
 
         let voting = VotingMechanism::new(2); // k=2 (ahead by 2)
         let red_flag = RedFlagFilter::new();
 
-        println!("[MAKER] Starting orchestration for goal: {}", goal);
+        info!(target: "maker", event = "orchestration_start", goal = %goal);
 
         let mut step_count = 0;
         let mut final_answer = String::new();
@@ -206,7 +209,12 @@ impl MakerOrchestrator {
                 self.state.decomposer_agent.handle_chat(next_step_req, AgentContext).await?;
             let next_step = next_step_resp.message.content.trim();
 
-            println!("[MAKER] Step {}: {}", step_count, next_step);
+            info!(
+                target: "maker",
+                event = "step",
+                step = step_count,
+                next_step = %next_step
+            );
 
             if next_step.eq_ignore_ascii_case("DONE") {
                 println!("[MAKER] Task complete.");
@@ -236,7 +244,7 @@ impl MakerOrchestrator {
 
                     // Apply RedFlag filtering
                     if red_flag.is_flagged(&content) {
-                        println!("[MAKER] Red flag triggered on candidate. Discarding.");
+                        info!(target: "maker", event = "red_flag", step = step_count, candidate = %content);
                         continue;
                     }
 
@@ -250,7 +258,13 @@ impl MakerOrchestrator {
             }
 
             let winner = voting.vote(candidates.clone()).unwrap_or_else(|| candidates[0].clone());
-            println!("[MAKER] Voted winner: {:.50}...", winner);
+            info!(
+                target: "maker",
+                event = "vote",
+                step = step_count,
+                candidates = ?candidates,
+                winner = ?winner
+            );
 
             let mut verify_messages = Vec::new();
             verify_messages.push(Message {

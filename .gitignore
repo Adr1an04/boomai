@@ -18,3 +18,8 @@ npm-debug.log
 yarn-error.log
 dist/
 .env
+
+# Logs
+logs/
+*.log
+*.jsonl

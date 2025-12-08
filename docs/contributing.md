@@ -2,7 +2,7 @@
 
 So I convinced you to contribute! This document is a guide that outlines all the necessary criterias for you to add and contribute. While some things in this repo are advanced you can always add a simple item or even UI changes and I'd love to add them in!
 
-<img src="assets/boomaiPurple.png" alt="Boomai" width="80%">
+<img src="docs/assets/boomaiPurple.png" alt="Boomai" width="80%">
 
 ## Ways to Help
 - Harden hybrid MAKER flows (decomposition, ahead-by-k voting, red-flagging).

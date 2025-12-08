@@ -34,9 +34,57 @@ use handlers::{
 use local::LocalModelManager;
 use mcp::manager::McpManager;
 use state::AppState;
+use tracing::Level;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_appender::rolling;
+use tracing_subscriber::filter::filter_fn;
+use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Layer};
+
+fn init_tracing() -> Vec<WorkerGuard> {
+    // File appenders (non-blocking) for research logs
+    let maker_appender = rolling::daily("logs", "maker_research.jsonl");
+    let (maker_writer, maker_guard) = tracing_appender::non_blocking(maker_appender);
+
+    let trace_appender = rolling::hourly("logs", "system_trace.jsonl");
+    let (trace_writer, trace_guard) = tracing_appender::non_blocking(trace_appender);
+
+    // Layer: maker-only to dedicated file (JSON)
+    let maker_file_layer = fmt::layer()
+        .with_span_events(FmtSpan::CLOSE)
+        .with_ansi(false)
+        .json()
+        .with_writer(maker_writer)
+        .with_filter(filter_fn(|meta| meta.target() == "maker"));
+
+    // Layer: everything except maker to system trace file (JSON)
+    let trace_file_layer = fmt::layer()
+        .with_span_events(FmtSpan::CLOSE)
+        .with_ansi(false)
+        .json()
+        .with_writer(trace_writer)
+        .with_filter(filter_fn(|meta| meta.target() != "maker"));
+
+    // Layer: stdout, only maker at INFO or below, pretty for console
+    let stdout_layer = fmt::layer()
+        .pretty()
+        .with_target(false)
+        .with_filter(filter_fn(|meta| meta.target() == "maker" && *meta.level() <= Level::INFO));
+
+    tracing_subscriber::registry()
+        .with(stdout_layer)
+        .with(maker_file_layer)
+        .with(trace_file_layer)
+        .init();
+
+    vec![maker_guard, trace_guard]
+}
 
 #[tokio::main]
 async fn main() {
+    // Initialize structured logging to split by target.
+    let _logging_guards = init_tracing();
+
     println!("Boomai core daemon (Rust) starting...");
 
     // Load persistent configuration
@@ -67,6 +115,27 @@ async fn main() {
     let local_manager = LocalModelManager::new();
     if let Err(e) = local_manager.sync_with_ollama().await {
         eprintln!("Warning: could not sync installed models from Ollama: {}", e);
+    }
+
+    // Telemetry heartbeat: log CPU/memory periodically for research/diagnostics.
+    {
+        tokio::spawn(async move {
+            let mut sys = sysinfo::System::new_all();
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+            loop {
+                interval.tick().await;
+                sys.refresh_all();
+                let mem_mb = sys.used_memory() / 1024 / 1024;
+                let cpu = sys.global_cpu_usage();
+                tracing::info!(
+                    target: "telemetry",
+                    timestamp = %chrono::Utc::now().to_rfc3339(),
+                    memory_used_mb = mem_mb,
+                    cpu_global_usage = cpu,
+                    "telemetry"
+                );
+            }
+        });
     }
     let mcp_manager = McpManager::new();
 
