@@ -16,10 +16,10 @@ cargo fmt --all
 cargo check -p boomai-daemon
 cargo test --workspace   # if feasible
 ```
-2) Tag it:
+2) Tag it (current release: v0.2.0):
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 3) GitHub Actions will:
    - run fmt/check/test on the tag
@@ -31,5 +31,6 @@ git push origin v0.1.0
 
 ## Changelog
 - Keep `CHANGELOG.md` (future) or release notes updated when tagging.
+
 
 
