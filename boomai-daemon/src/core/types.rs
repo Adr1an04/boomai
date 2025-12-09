@@ -145,3 +145,47 @@ pub struct InstalledLocalModel {
     pub port: u16,
     pub runtime_type: String,
 }
+
+// --- MCP core types ---
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum McpTransport {
+    /// Local process via stdio (e.g., npx/pip tool).
+    Stdio {
+        command: String,
+        #[serde(default)]
+        args: Vec<String>,
+        #[serde(default)]
+        env: Vec<(String, String)>,
+    },
+    /// Remote SSE/HTTP endpoint (e.g., hosted MCP server).
+    Sse {
+        url: String,
+        #[serde(default)]
+        api_key: Option<String>,
+    },
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct McpManifest {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub logo: Option<String>,
+    #[serde(default)]
+    pub required_env_vars: Vec<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InstalledMod {
+    pub id: String,
+    pub manifest: McpManifest,
+    pub transport: McpTransport,
+    #[serde(default)]
+    pub enabled: bool,
+}
