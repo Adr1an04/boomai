@@ -14,13 +14,27 @@ impl McpManager {
         Self { clients: Arc::new(RwLock::new(HashMap::new())) }
     }
 
-    pub async fn add_client(
+    pub async fn add_stdio_client(
         &self,
         id: String,
         command: &str,
         args: &[&str],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let client = McpClient::new(command, args).await?;
+        let client = McpClient::connect_stdio(command, args).await?;
+        client.initialize().await?;
+
+        let mut clients = self.clients.write().await;
+        clients.insert(id, Arc::new(client));
+        Ok(())
+    }
+
+    pub async fn add_sse_client(
+        &self,
+        id: String,
+        url: &str,
+        api_key: Option<String>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let client = McpClient::connect_sse(url, api_key).await?;
         client.initialize().await?;
 
         let mut clients = self.clients.write().await;

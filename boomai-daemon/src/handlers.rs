@@ -219,23 +219,32 @@ pub async fn config_mcp_server_add(
         None => return Json(json!({ "status": "error", "message": "Missing server id" })),
     };
 
-    let command = match payload["command"].as_str() {
-        Some(cmd) => cmd,
-        None => return Json(json!({ "status": "error", "message": "Missing command" })),
-    };
-
-    let args_vec = match payload["args"].as_array() {
-        Some(arr) => arr.iter().filter_map(|v| v.as_str()).collect::<Vec<&str>>(),
-        None => vec![],
-    };
-
-    match state.mcp_manager.add_client(id.to_string(), command, &args_vec).await {
-        Ok(_) => {
-            Json(json!({ "status": "success", "message": format!("MCP server {} added", id) }))
+    // Support either stdio (command/args) or SSE (url/api_key)
+    if let Some(cmd) = payload["command"].as_str() {
+        let args_vec = match payload["args"].as_array() {
+            Some(arr) => arr.iter().filter_map(|v| v.as_str()).collect::<Vec<&str>>(),
+            None => vec![],
+        };
+        match state.mcp_manager.add_stdio_client(id.to_string(), cmd, &args_vec).await {
+            Ok(_) => Json(
+                json!({ "status": "success", "message": format!("MCP server {} added (stdio)", id) }),
+            ),
+            Err(e) => Json(
+                json!({ "status": "error", "message": format!("Failed to add server: {}", e) }),
+            ),
         }
-        Err(e) => {
-            Json(json!({ "status": "error", "message": format!("Failed to add server: {}", e) }))
+    } else if let Some(url) = payload["url"].as_str() {
+        let api_key = payload["api_key"].as_str().map(|s| s.to_string());
+        match state.mcp_manager.add_sse_client(id.to_string(), url, api_key).await {
+            Ok(_) => Json(
+                json!({ "status": "success", "message": format!("MCP server {} added (sse)", id) }),
+            ),
+            Err(e) => Json(
+                json!({ "status": "error", "message": format!("Failed to add server: {}", e) }),
+            ),
         }
+    } else {
+        Json(json!({ "status": "error", "message": "Missing command or url" }))
     }
 }
 

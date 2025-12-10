@@ -4,49 +4,63 @@ use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::mpsc;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
 
 use super::types::{
     JsonRpcId, JsonRpcRequest, JsonRpcResponse, McpCapabilities, McpClientInfo,
-    McpInitializeParams, McpInitializeResult,
+    McpInitializeParams, McpInitializeResult, McpListToolsResult,
 };
 
+enum Transport {
+    Stdio {
+        server_process: Arc<Mutex<Child>>,
+        request_tx: mpsc::Sender<JsonRpcRequest>,
+        pending: Arc<Mutex<HashMap<String, mpsc::Sender<JsonRpcResponse>>>>,
+    },
+    Http {
+        client: reqwest::Client,
+        url: String,
+        api_key: Option<String>,
+    },
+}
+
 pub struct McpClient {
-    server_process: Arc<Mutex<Child>>, // keep child alive while client lives
-    request_tx: mpsc::Sender<JsonRpcRequest>,
-    pending_requests: Arc<Mutex<HashMap<String, mpsc::Sender<JsonRpcResponse>>>>,
+    transport: Transport,
 }
 
 impl McpClient {
-    pub async fn new(command: &str, args: &[&str]) -> Result<Self, Box<dyn std::error::Error>> {
+    /// Connect to a local MCP server via stdio
+    pub async fn connect_stdio(
+        command: &str,
+        args: &[&str],
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let mut child = Command::new(command)
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .kill_on_drop(true) // Ensure cleanup on drop
+            .kill_on_drop(true)
             .spawn()?;
 
         let stdin = child.stdin.take().ok_or("Failed to open stdin")?;
         let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
         let stderr = child.stderr.take().ok_or("Failed to open stderr")?;
 
-        // logging handler
+        // stderr logging
         tokio::spawn(async move {
             let mut reader = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = reader.next_line().await {
-                eprintln!("[MCP Server Error]: {}", line);
+                eprintln!("[MCP stderr]: {}", line);
             }
         });
 
         let (request_tx, mut request_rx) = mpsc::channel::<JsonRpcRequest>(32);
-        let pending_requests: Arc<Mutex<HashMap<String, mpsc::Sender<JsonRpcResponse>>>> =
+        let pending: Arc<Mutex<HashMap<String, mpsc::Sender<JsonRpcResponse>>>> =
             Arc::new(Mutex::new(HashMap::new()));
-        let pending_requests_clone = pending_requests.clone();
+        let pending_clone = pending.clone();
 
-        // writer task
+        // writer
         let mut stdin_writer = stdin;
         tokio::spawn(async move {
             while let Some(req) = request_rx.recv().await {
@@ -58,18 +72,18 @@ impl McpClient {
             }
         });
 
-        // reader task
+        // reader
         tokio::spawn(async move {
             let mut reader = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = reader.next_line().await {
                 if let Ok(response) = serde_json::from_str::<JsonRpcResponse>(&line) {
                     if let Some(JsonRpcId::String(id)) = &response.id {
-                        let mut pending = pending_requests_clone.lock().await;
+                        let mut pending = pending_clone.lock().await;
                         if let Some(tx) = pending.remove(id) {
                             let _ = tx.send(response).await;
                         }
                     } else if let Some(JsonRpcId::Number(id)) = &response.id {
-                        let mut pending = pending_requests_clone.lock().await;
+                        let mut pending = pending_clone.lock().await;
                         if let Some(tx) = pending.remove(&id.to_string()) {
                             let _ = tx.send(response).await;
                         }
@@ -78,7 +92,22 @@ impl McpClient {
             }
         });
 
-        Ok(Self { server_process: Arc::new(Mutex::new(child)), request_tx, pending_requests })
+        Ok(Self {
+            transport: Transport::Stdio {
+                server_process: Arc::new(Mutex::new(child)),
+                request_tx,
+                pending,
+            },
+        })
+    }
+
+    /// connect to mcp server via sse
+    pub async fn connect_sse(
+        url: &str,
+        api_key: Option<String>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let client = reqwest::Client::new();
+        Ok(Self { transport: Transport::Http { client, url: url.to_string(), api_key } })
     }
 
     pub async fn send_request(
@@ -94,27 +123,38 @@ impl McpClient {
             id: Some(JsonRpcId::String(id.clone())),
         };
 
-        let (response_tx, mut response_rx) = mpsc::channel(1);
-
-        {
-            let mut pending = self.pending_requests.lock().await;
-            pending.insert(id.clone(), response_tx);
+        match &self.transport {
+            Transport::Stdio { request_tx, pending, .. } => {
+                let (response_tx, mut response_rx) = mpsc::channel(1);
+                {
+                    let mut p = pending.lock().await;
+                    p.insert(id.clone(), response_tx);
+                }
+                request_tx.send(request).await?;
+                let response = response_rx.recv().await.ok_or("Connection closed")?;
+                if let Some(error) = response.error {
+                    return Err(format!("RPC Error {}: {}", error.code, error.message).into());
+                }
+                response.result.ok_or("No result in response".into())
+            }
+            Transport::Http { client, url, api_key } => {
+                let mut req = client.post(url).json(&request);
+                if let Some(key) = api_key {
+                    req = req.bearer_auth(key);
+                }
+                let resp = req.send().await?;
+                let rpc: JsonRpcResponse = resp.json().await?;
+                if let Some(error) = rpc.error {
+                    return Err(format!("RPC Error {}: {}", error.code, error.message).into());
+                }
+                rpc.result.ok_or("No result in response".into())
+            }
         }
-
-        self.request_tx.send(request).await?;
-
-        let response = response_rx.recv().await.ok_or("Connection closed")?;
-
-        if let Some(error) = response.error {
-            return Err(format!("RPC Error {}: {}", error.code, error.message).into());
-        }
-
-        response.result.ok_or("No result in response".into())
     }
 
     pub async fn initialize(&self) -> Result<McpInitializeResult, Box<dyn std::error::Error>> {
         let params = McpInitializeParams {
-            protocol_version: "2024-11-05".to_string(), // Latest draft
+            protocol_version: "2024-11-05".to_string(),
             capabilities: McpCapabilities { experimental: None, sampling: None, roots: None },
             client_info: McpClientInfo {
                 name: "boomai-daemon".to_string(),
@@ -126,34 +166,35 @@ impl McpClient {
             self.send_request("initialize", Some(serde_json::to_value(params)?)).await?;
         let result: McpInitializeResult = serde_json::from_value(result_value)?;
 
-        // After initialize, send initialized notification
-        let notification = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            method: "notifications/initialized".to_string(),
-            params: None,
-            id: None,
-        };
-        self.request_tx.send(notification).await?;
+        // send initialized notification
+        if let Transport::Stdio { request_tx, .. } = &self.transport {
+            let notification = JsonRpcRequest {
+                jsonrpc: "2.0".to_string(),
+                method: "notifications/initialized".to_string(),
+                params: None,
+                id: None,
+            };
+            let _ = request_tx.send(notification).await;
+        }
 
         Ok(result)
     }
 
-    pub async fn list_tools(
-        &self,
-    ) -> Result<super::types::McpListToolsResult, Box<dyn std::error::Error>> {
+    pub async fn list_tools(&self) -> Result<McpListToolsResult, Box<dyn std::error::Error>> {
         let result_value = self.send_request("tools/list", None).await?;
-        let result: super::types::McpListToolsResult = serde_json::from_value(result_value)?;
+        let result: McpListToolsResult = serde_json::from_value(result_value)?;
         Ok(result)
     }
 }
 
 impl Drop for McpClient {
     fn drop(&mut self) {
-        // Best-effort kill on drop to avoid leaks.
-        let server = self.server_process.clone();
-        tokio::spawn(async move {
-            let mut child = server.lock().await;
-            let _ = child.kill().await;
-        });
+        if let Transport::Stdio { server_process, .. } = &self.transport {
+            let server = server_process.clone();
+            tokio::spawn(async move {
+                let mut child = server.lock().await;
+                let _ = child.kill().await;
+            });
+        }
     }
 }
