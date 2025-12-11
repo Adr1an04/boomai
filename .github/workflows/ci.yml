@@ -8,7 +8,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  SCCACHE_GHA_ENABLED: "true"
 
 jobs:
   lint:
@@ -20,7 +19,6 @@ jobs:
         toolchain: [stable, beta, nightly]
     steps:
       - uses: actions/checkout@v4
-      - uses: mozilla-actions/sccache-action@v0.0.4
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
@@ -40,8 +38,6 @@ jobs:
         if: matrix.toolchain == 'stable'
         run: cargo fmt --all -- --check
       - name: clippy
-        env:
-          RUSTC_WRAPPER: sccache
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
@@ -53,7 +49,6 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: mozilla-actions/sccache-action@v0.0.4
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
@@ -78,8 +73,6 @@ jobs:
         with:
           tool: nextest
       - name: Run tests (daemon)
-        env:
-          RUSTC_WRAPPER: sccache
         run: cargo nextest run -p boomai-daemon --all-targets
 
   audit:
@@ -119,9 +112,6 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
       - name: Cache cargo
         uses: actions/cache@v4
         with:
@@ -132,6 +122,9 @@ jobs:
           key: udeps-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             udeps-${{ runner.os }}-
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
       - name: Install cargo-udeps
         uses: taiki-e/install-action@v2
         with:
