@@ -20,7 +20,7 @@ jobs:
         toolchain: [stable, beta, nightly]
     steps:
       - uses: actions/checkout@v4
-      - uses: mozilla-actions/sccache@v0.0.4
+      - uses: mozilla-actions/sccache-action@v0.0.4
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
@@ -53,7 +53,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: mozilla-actions/sccache@v0.0.4
+      - uses: mozilla-actions/sccache-action@v0.0.4
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
