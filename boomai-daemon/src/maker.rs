@@ -22,9 +22,9 @@ pub async fn race_to_k(
         let p = provider.clone();
         let pr = prompt_arc.clone();
         set.spawn(async move {
-            let req = ChatRequest {
-                messages: vec![Message { role: Role::User, content: pr.to_string() }],
-            };
+            let req = ChatRequest::builder()
+                .messages(vec![Message { role: Role::User, content: pr.to_string() }])
+                .build();
             p.chat(req).await
         });
     }

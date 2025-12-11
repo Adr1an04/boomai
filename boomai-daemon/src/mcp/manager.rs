@@ -3,10 +3,11 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::client::McpClient;
+use crate::core::ServerId;
 
 #[derive(Clone)]
 pub struct McpManager {
-    clients: Arc<RwLock<HashMap<String, Arc<McpClient>>>>,
+    clients: Arc<RwLock<HashMap<ServerId, Arc<McpClient>>>>,
 }
 
 impl McpManager {
@@ -16,7 +17,7 @@ impl McpManager {
 
     pub async fn add_stdio_client(
         &self,
-        id: String,
+        id: ServerId,
         command: &str,
         args: &[&str],
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -30,7 +31,7 @@ impl McpManager {
 
     pub async fn add_sse_client(
         &self,
-        id: String,
+        id: ServerId,
         url: &str,
         api_key: Option<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -42,13 +43,37 @@ impl McpManager {
         Ok(())
     }
 
-    pub async fn get_client(&self, id: &str) -> Option<Arc<McpClient>> {
+    pub async fn get_client(&self, id: &ServerId) -> Option<Arc<McpClient>> {
         let clients = self.clients.read().await;
         clients.get(id).cloned()
     }
 
     pub async fn list_clients(&self) -> Vec<String> {
         let clients = self.clients.read().await;
-        clients.keys().cloned().collect()
+        clients.keys().map(|id| id.as_str().to_string()).collect()
+    }
+
+    /// Best-effort shutdown of a specific client.
+    #[allow(dead_code)]
+    pub async fn shutdown_client(&self, id: &ServerId) {
+        let client = {
+            let mut clients = self.clients.write().await;
+            clients.remove(id)
+        };
+        if let Some(c) = client {
+            c.shutdown().await;
+        }
+    }
+
+    /// Best-effort shutdown of all clients.
+    #[allow(dead_code)]
+    pub async fn shutdown_all(&self) {
+        let clients: Vec<_> = {
+            let mut guard = self.clients.write().await;
+            guard.drain().collect()
+        };
+        for (_, client) in clients {
+            client.shutdown().await;
+        }
     }
 }

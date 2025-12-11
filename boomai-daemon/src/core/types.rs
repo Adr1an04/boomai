@@ -52,9 +52,113 @@ pub struct Message {
     pub content: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct ModelId(pub String);
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct ServerId(pub String);
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct ToolName(pub String);
+
+impl ModelId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ModelId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl ServerId {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ServerId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl ToolName {
+    #[allow(dead_code)]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ToolName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<&str> for ModelId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl From<String> for ModelId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for ServerId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl From<String> for ServerId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for ToolName {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl From<String> for ToolName {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatRequest {
     pub messages: Vec<Message>,
+}
+
+#[derive(Debug, Default)]
+pub struct ChatRequestBuilder {
+    messages: Vec<Message>,
+}
+
+impl ChatRequest {
+    pub fn builder() -> ChatRequestBuilder {
+        ChatRequestBuilder::default()
+    }
+}
+
+impl ChatRequestBuilder {
+    pub fn messages(mut self, messages: Vec<Message>) -> Self {
+        self.messages = messages;
+        self
+    }
+
+    pub fn build(self) -> ChatRequest {
+        ChatRequest { messages: self.messages }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -63,7 +167,7 @@ pub enum ExecutionStatus {
     Classifying,
     Decomposing,
     Voting { round: u32 },
-    ToolCall { tool: String },
+    ToolCall { tool: ToolName },
     Solved,
     Error,
     Processing,
@@ -110,6 +214,10 @@ pub struct ModelConfig {
 }
 
 impl ModelConfig {
+    pub fn builder() -> ModelConfigBuilder {
+        ModelConfigBuilder::default()
+    }
+
     pub fn validate(&self) -> anyhow::Result<()> {
         if self.base_url.trim().is_empty() {
             return Err(anyhow::anyhow!("base_url cannot be empty"));
@@ -127,9 +235,46 @@ impl ModelConfig {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct ModelConfigBuilder {
+    base_url: Option<String>,
+    api_key: Option<String>,
+    model: Option<String>,
+}
+
+impl ModelConfigBuilder {
+    pub fn base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = Some(base_url.into());
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.api_key = Some(api_key.into());
+        self
+    }
+
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+
+    pub fn build(self) -> anyhow::Result<ModelConfig> {
+        Ok(ModelConfig {
+            base_url: self
+                .base_url
+                .ok_or_else(|| anyhow::anyhow!("base_url is required for ModelConfig"))?,
+            api_key: self.api_key,
+            model: self
+                .model
+                .ok_or_else(|| anyhow::anyhow!("model is required for ModelConfig"))?,
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AvailableLocalModel {
-    pub id: String,
+    pub id: ModelId,
     pub name: String,
     pub description: String,
     pub size_gb: f64,
@@ -141,7 +286,7 @@ pub struct AvailableLocalModel {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InstalledLocalModel {
-    pub model_id: String,
+    pub model_id: ModelId,
     pub install_path: String,
     pub is_running: bool,
     pub port: u16,

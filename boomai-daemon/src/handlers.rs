@@ -1,6 +1,7 @@
+use crate::core::types::ChatRequestBuilder;
 use crate::core::{
-    ChatRequest, ChatResponse, ExecutionStatus, HttpProvider, Message, ModelConfig, ModelProvider,
-    Role,
+    ChatRequest, ChatResponse, ExecutionStatus, HttpProvider, Message, ModelConfig, ModelId,
+    ModelProvider, Role, ServerId,
 };
 use axum::{
     extract::{Path, State},
@@ -38,8 +39,9 @@ pub async fn config_model_test(Json(config): Json<ModelConfig>) -> Json<Value> {
     let provider =
         HttpProvider::new(config.base_url.clone(), config.api_key.clone(), config.model.clone());
 
-    let test_req =
-        ChatRequest { messages: vec![Message { role: Role::User, content: "Hello".to_string() }] };
+    let test_req = ChatRequestBuilder::default()
+        .messages(vec![Message { role: Role::User, content: "Hello".to_string() }])
+        .build();
 
     match provider.chat(test_req).await {
         Ok(_) => Json(json!({ "status": "success", "message": "Connection successful" })),
@@ -129,7 +131,7 @@ pub async fn config_model_rollback(
 }
 
 pub async fn config_local_available_models(State(state): State<AppState>) -> Json<Value> {
-    let installed_ids: HashSet<String> =
+    let installed_ids: HashSet<ModelId> =
         state.local_manager.get_installed_models().iter().map(|m| m.model_id.clone()).collect();
     let models: Vec<_> = crate::local::get_available_models()
         .into_iter()
@@ -148,7 +150,7 @@ pub async fn config_local_install_model(
     Json(payload): Json<serde_json::Value>,
 ) -> Json<Value> {
     let model_id = match payload["model_id"].as_str() {
-        Some(id) => id,
+        Some(id) => ModelId::from(id),
         None => {
             return Json(json!({
                 "status": "error",
@@ -157,9 +159,9 @@ pub async fn config_local_install_model(
         }
     };
 
-    println!("Installing local model: {}", model_id);
+    println!("Installing local model: {}", model_id.as_str());
 
-    match state.local_manager.install_model(model_id).await {
+    match state.local_manager.install_model(&model_id).await {
         Ok(_) => Json(json!({
             "status": "success",
             "message": format!("Model {} installed successfully", model_id)
@@ -176,7 +178,7 @@ pub async fn config_local_uninstall_model(
     Json(payload): Json<serde_json::Value>,
 ) -> Json<Value> {
     let model_id = match payload["model_id"].as_str() {
-        Some(id) => id,
+        Some(id) => ModelId::from(id),
         None => {
             return Json(json!({
                 "status": "error",
@@ -185,9 +187,9 @@ pub async fn config_local_uninstall_model(
         }
     };
 
-    println!("Uninstalling local model: {}", model_id);
+    println!("Uninstalling local model: {}", model_id.as_str());
 
-    match state.local_manager.uninstall_model(model_id).await {
+    match state.local_manager.uninstall_model(&model_id).await {
         Ok(_) => Json(json!({
             "status": "success",
             "message": format!("Model {} uninstalled successfully", model_id)
@@ -212,6 +214,7 @@ pub async fn config_mcp_server_add(
         Some(id) => id,
         None => return Json(json!({ "status": "error", "message": "Missing server id" })),
     };
+    let server_id = ServerId::from(id);
 
     // Support either stdio (command/args) or SSE (url/api_key)
     if let Some(cmd) = payload["command"].as_str() {
@@ -219,7 +222,7 @@ pub async fn config_mcp_server_add(
             Some(arr) => arr.iter().filter_map(|v| v.as_str()).collect::<Vec<&str>>(),
             None => vec![],
         };
-        match state.mcp_manager.add_stdio_client(id.to_string(), cmd, &args_vec).await {
+        match state.mcp_manager.add_stdio_client(server_id.clone(), cmd, &args_vec).await {
             Ok(_) => Json(
                 json!({ "status": "success", "message": format!("MCP server {} added (stdio)", id) }),
             ),
@@ -229,7 +232,7 @@ pub async fn config_mcp_server_add(
         }
     } else if let Some(url) = payload["url"].as_str() {
         let api_key = payload["api_key"].as_str().map(|s| s.to_string());
-        match state.mcp_manager.add_sse_client(id.to_string(), url, api_key).await {
+        match state.mcp_manager.add_sse_client(server_id.clone(), url, api_key).await {
             Ok(_) => Json(
                 json!({ "status": "success", "message": format!("MCP server {} added (sse)", id) }),
             ),
@@ -247,11 +250,11 @@ pub async fn config_mcp_tools_list(
     Json(payload): Json<serde_json::Value>,
 ) -> Json<Value> {
     let server_id = match payload["server_id"].as_str() {
-        Some(id) => id,
+        Some(id) => ServerId::from(id),
         None => return Json(json!({ "status": "error", "message": "Missing server_id" })),
     };
 
-    if let Some(client) = state.mcp_manager.get_client(server_id).await {
+    if let Some(client) = state.mcp_manager.get_client(&server_id).await {
         match client.list_tools().await {
             Ok(tools) => Json(
                 serde_json::to_value(tools).unwrap_or(json!({ "error": "Serialization failed" })),

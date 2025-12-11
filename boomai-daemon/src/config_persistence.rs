@@ -84,11 +84,15 @@ pub async fn load_config() -> Result<DaemonConfigStore> {
 
     if !config_path.exists() {
         // Return default
-        let default_config = ModelConfig {
-            base_url: "http://127.0.0.1:11434/v1".to_string(),
-            api_key: None,
-            model: "tinyllama".to_string(),
-        };
+        let default_config = ModelConfig::builder()
+            .base_url("http://127.0.0.1:11434/v1")
+            .model("tinyllama")
+            .build()
+            .unwrap_or_else(|_| ModelConfig {
+                base_url: "http://127.0.0.1:11434/v1".to_string(),
+                api_key: None,
+                model: "tinyllama".to_string(),
+            });
 
         return Ok(DaemonConfigStore::new(default_config));
     }
