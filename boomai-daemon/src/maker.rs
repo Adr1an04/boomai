@@ -14,14 +14,17 @@ pub async fn race_to_k(
     n: usize,
     k: usize,
 ) -> String {
+    let prompt_arc: Arc<str> = Arc::from(prompt);
     let mut set = JoinSet::new();
     let mut votes: HashMap<String, usize> = HashMap::new();
 
     for _ in 0..n {
         let p = provider.clone();
-        let pr = prompt.clone();
+        let pr = prompt_arc.clone();
         set.spawn(async move {
-            let req = ChatRequest { messages: vec![Message { role: Role::User, content: pr }] };
+            let req = ChatRequest {
+                messages: vec![Message { role: Role::User, content: pr.to_string() }],
+            };
             p.chat(req).await
         });
     }

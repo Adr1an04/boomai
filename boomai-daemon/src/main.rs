@@ -3,7 +3,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::sync::RwLock as TokioRwLock;
 
 mod agents;
@@ -106,7 +106,7 @@ async fn main() {
         config_store.active_config.api_key.clone(),
         config_store.active_config.model.clone(),
     ));
-    let provider_lock = Arc::new(RwLock::new(provider.clone()));
+    let provider_lock = Arc::new(TokioRwLock::new(provider.clone()));
 
     let local_manager = LocalModelManager::new();
     if let Err(e) = local_manager.sync_with_ollama().await {
@@ -189,5 +189,9 @@ async fn main() {
         );
         std::process::exit(1);
     });
-    axum::serve(listener, app).await.unwrap();
+
+    if let Err(e) = axum::serve(listener, app).await {
+        tracing::error!("Server failed to start: {}", e);
+        std::process::exit(1);
+    }
 }

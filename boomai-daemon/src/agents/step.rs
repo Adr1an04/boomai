@@ -1,14 +1,18 @@
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+static TIME_PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
+static CALC_PATTERNS: OnceLock<Vec<Regex>> = OnceLock::new();
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StepKind {
     Tool,
     Math,
     Reasoning,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolKind {
     SystemTime,
     Calculator,
@@ -22,68 +26,88 @@ pub struct Step {
     pub tool: Option<ToolKind>,
 }
 
-#[derive(Debug, Clone)]
-pub struct ToolSignature {
-    pub kind: ToolKind,
-    pub patterns: Vec<Regex>,
+pub trait ToolMatcher: Send + Sync {
+    fn kind(&self) -> ToolKind;
+    fn matches(&self, text: &str) -> bool;
 }
 
-#[derive(Debug, Clone)]
+struct SystemTimeMatcher {
+    patterns: &'static [Regex],
+}
+
+impl SystemTimeMatcher {
+    fn new() -> Self {
+        Self { patterns: time_patterns() }
+    }
+}
+
+impl ToolMatcher for SystemTimeMatcher {
+    fn kind(&self) -> ToolKind {
+        ToolKind::SystemTime
+    }
+
+    fn matches(&self, text: &str) -> bool {
+        self.patterns.iter().any(|re| re.is_match(text))
+    }
+}
+
+struct CalculatorMatcher {
+    patterns: &'static [Regex],
+}
+
+impl CalculatorMatcher {
+    fn new() -> Self {
+        Self { patterns: calc_patterns() }
+    }
+}
+
+impl ToolMatcher for CalculatorMatcher {
+    fn kind(&self) -> ToolKind {
+        ToolKind::Calculator
+    }
+
+    fn matches(&self, text: &str) -> bool {
+        let has_digit = text.chars().any(|c| c.is_ascii_digit());
+        let has_operator = text.chars().any(|c| "+-*/".contains(c));
+        let has_math_word = text.contains("add")
+            || text.contains("sum")
+            || text.contains("plus")
+            || text.contains("subtract")
+            || text.contains("minus")
+            || text.contains("multiply")
+            || text.contains("divide")
+            || text.contains("calculate")
+            || text.contains("compute")
+            || text.contains("times");
+
+        self.patterns.iter().any(|re| re.is_match(text))
+            && has_digit
+            && (has_operator || has_math_word)
+    }
+}
+
 pub struct ToolRegistry {
-    pub signatures: Vec<ToolSignature>,
+    pub matchers: Vec<Box<dyn ToolMatcher>>,
+}
+
+impl std::fmt::Debug for ToolRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolRegistry").field("matchers_len", &self.matchers.len()).finish()
+    }
+}
+
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self {
+            matchers: vec![Box::new(SystemTimeMatcher::new()), Box::new(CalculatorMatcher::new())],
+        }
+    }
 }
 
 impl ToolRegistry {
-    pub fn default() -> Self {
-        let time_patterns = vec![
-            Regex::new(r"\bcurrent (system )?time\b").unwrap(),
-            Regex::new(r"\bexact current time\b").unwrap(),
-            Regex::new(r"\bwhat time is it\b").unwrap(),
-            Regex::new(r"\bnow time\b").unwrap(),
-            Regex::new(r"\bsystem time\b").unwrap(),
-        ];
-
-        let calc_patterns = vec![
-            Regex::new(r"[0-9][0-9\+\-\*/\s\(\)\.]*[0-9]").unwrap(),
-            Regex::new(r"\b(add|sum|plus|subtract|minus|times|multiply|divide)\b").unwrap(),
-            Regex::new(r"\bcalculate\b").unwrap(),
-            Regex::new(r"\bcompute\b").unwrap(),
-        ];
-
-        Self {
-            signatures: vec![
-                ToolSignature { kind: ToolKind::SystemTime, patterns: time_patterns },
-                ToolSignature { kind: ToolKind::Calculator, patterns: calc_patterns },
-            ],
-        }
-    }
-
     pub fn match_tool(&self, text: &str) -> Option<ToolKind> {
         let p = text.to_lowercase();
-        let has_digit = p.chars().any(|c| c.is_ascii_digit());
-        let has_operator = p.chars().any(|c| "+-*/".contains(c));
-        let has_math_word = p.contains("add")
-            || p.contains("sum")
-            || p.contains("plus")
-            || p.contains("subtract")
-            || p.contains("minus")
-            || p.contains("multiply")
-            || p.contains("divide")
-            || p.contains("calculate")
-            || p.contains("compute")
-            || p.contains("times");
-        for sig in &self.signatures {
-            if sig.patterns.iter().any(|re| re.is_match(&p)) {
-                if matches!(sig.kind, ToolKind::Calculator) {
-                    if has_digit && (has_operator || has_math_word) {
-                        return Some(sig.kind.clone());
-                    }
-                } else {
-                    return Some(sig.kind.clone());
-                }
-            }
-        }
-        None
+        self.matchers.iter().find_map(|matcher| matcher.matches(&p).then_some(matcher.kind()))
     }
 }
 
@@ -125,7 +149,7 @@ pub fn classify_step(text: &str, registry: &ToolRegistry) -> Step {
 
 pub fn decide_strategy(step: &Step) -> ExecStrategy {
     if let Some(tool) = &step.tool {
-        return ExecStrategy::ToolCall(tool.clone());
+        return ExecStrategy::ToolCall(*tool);
     }
 
     match step.kind {
@@ -193,4 +217,28 @@ fn is_reasoning_like(text: &str) -> bool {
         || lower.contains("advantages")
         || lower.contains("disadvantages")
         || lower.contains("greater than")
+}
+
+fn time_patterns() -> &'static [Regex] {
+    TIME_PATTERNS.get_or_init(|| {
+        vec![
+            Regex::new(r"\bcurrent (system )?time\b").expect("valid system time regex"),
+            Regex::new(r"\bexact current time\b").expect("valid exact time regex"),
+            Regex::new(r"\bwhat time is it\b").expect("valid time question regex"),
+            Regex::new(r"\bnow time\b").expect("valid now time regex"),
+            Regex::new(r"\bsystem time\b").expect("valid system time regex"),
+        ]
+    })
+}
+
+fn calc_patterns() -> &'static [Regex] {
+    CALC_PATTERNS.get_or_init(|| {
+        vec![
+            Regex::new(r"[0-9][0-9\+\-\*/\s\(\)\.]*[0-9]").expect("valid math expression regex"),
+            Regex::new(r"\b(add|sum|plus|subtract|minus|times|multiply|divide)\b")
+                .expect("valid math verb regex"),
+            Regex::new(r"\bcalculate\b").expect("valid calculate regex"),
+            Regex::new(r"\bcompute\b").expect("valid compute regex"),
+        ]
+    })
 }

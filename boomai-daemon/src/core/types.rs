@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+/// Reserved for future multi-step planner phases (kept documented intentionally).
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum StepType {
@@ -16,6 +17,7 @@ pub enum StepKind {
     Other,
 }
 
+/// Structured plan step used by planned planner integrations.
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PlanStep {
@@ -148,6 +150,7 @@ pub struct InstalledLocalModel {
 
 // --- MCP core types ---
 
+/// MCP transport definition (kept for upcoming MCP client wiring).
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -168,6 +171,7 @@ pub enum McpTransport {
     },
 }
 
+/// MCP manifest schema for future server discovery/registration flows.
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct McpManifest {
@@ -180,6 +184,7 @@ pub struct McpManifest {
     pub required_env_vars: Vec<String>,
 }
 
+/// Installed mod record (planned mods module still in progress).
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InstalledMod {

@@ -7,27 +7,26 @@ use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatu
 use crate::maker::race_to_k;
 use crate::state::AppState;
 use crate::tools::stubs::run_internal_stub;
+use evalexpr::{build_operator_tree, DefaultNumericTypes};
 use regex::Regex;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tracing::info;
 
+static YEAR_RE: OnceLock<Regex> = OnceLock::new();
+static CMP_RE: OnceLock<Regex> = OnceLock::new();
+static GT_RE: OnceLock<Regex> = OnceLock::new();
+static MATH_REGEX: OnceLock<Regex> = OnceLock::new();
+static TIME_REGEX: OnceLock<Regex> = OnceLock::new();
+
 fn extract_math_expr(input: &str) -> Option<String> {
-    let mut expr_buf = String::new();
-    for ch in input.chars() {
-        if ch.is_ascii_digit() || "+-*/(). ".contains(ch) {
-            expr_buf.push(ch);
-        } else {
-            expr_buf.push(' ');
-        }
+    let candidate = sanitize_math(input);
+    if candidate.is_empty() {
+        return None;
     }
-    let expr = expr_buf.split_whitespace().collect::<Vec<_>>().join(" ");
-    let has_op =
-        expr.contains('+') || expr.contains('-') || expr.contains('*') || expr.contains('/');
-    let has_digit = expr.chars().any(|c| c.is_ascii_digit());
-    if has_op && has_digit {
-        Some(expr)
-    } else {
-        None
+
+    match build_operator_tree::<DefaultNumericTypes>(&candidate) {
+        Ok(_) => Some(candidate),
+        Err(_) => None,
     }
 }
 
@@ -53,7 +52,8 @@ fn is_instruction_like(s: &str) -> bool {
 }
 
 fn extract_year(text: &str) -> Option<i32> {
-    let year_re = Regex::new(r"\b(20\d{2}|19\d{2})\b").unwrap();
+    let year_re =
+        YEAR_RE.get_or_init(|| Regex::new(r"\b(20\d{2}|19\d{2})\b").expect("valid year regex"));
     year_re.captures(text).and_then(|caps| caps.get(1)).and_then(|m| m.as_str().parse::<i32>().ok())
 }
 
@@ -69,7 +69,9 @@ fn sanitize_math(text: &str) -> String {
 fn compare_numeric(rendered: &str, prev: f64) -> Option<String> {
     // look for patterns like "> 100", "greater than 100", ">= 100"
     let lower = rendered.to_lowercase();
-    let cmp_re = Regex::new(r"(>=|<=|>|<)\s*([-+]?\d+(\.\d+)?)").ok()?;
+    let cmp_re = CMP_RE.get_or_init(|| {
+        Regex::new(r"(>=|<=|>|<)\s*([-+]?\d+(\.\d+)?)").expect("valid compare regex")
+    });
     if let Some(caps) = cmp_re.captures(&lower) {
         let op = caps.get(1)?.as_str();
         let rhs: f64 = caps.get(2)?.as_str().parse().ok()?;
@@ -88,7 +90,8 @@ fn compare_numeric(rendered: &str, prev: f64) -> Option<String> {
         ));
     }
 
-    let gt_re = Regex::new(r"greater than\s+([-+]?\d+(\.\d+)?)").ok()?;
+    let gt_re = GT_RE
+        .get_or_init(|| Regex::new(r"greater than\s+([-+]?\d+(\.\d+)?)").expect("valid gt regex"));
     if let Some(caps) = gt_re.captures(&lower) {
         let rhs: f64 = caps.get(1)?.as_str().parse().ok()?;
         let pass = prev > rhs;
@@ -137,7 +140,8 @@ fn classify_intent(prompt: &str, allow_compound: bool) -> ExecutionPolicy {
         return ExecutionPolicy::DecomposeAndExecute;
     }
 
-    let math_regex = Regex::new(r"^[\d\s\+\-\*\/\(\)\.]+$").unwrap();
+    let math_regex = MATH_REGEX
+        .get_or_init(|| Regex::new(r"^[\d\s\+\-\*\/\(\)\.]+$").expect("valid math regex"));
     let has_inline_math = {
         let op_count = p.matches(['+', '-', '*', '/']).count();
         p.chars().any(|c| c.is_ascii_digit()) && op_count >= 1
@@ -154,7 +158,10 @@ fn classify_intent(prompt: &str, allow_compound: bool) -> ExecutionPolicy {
         };
     }
 
-    let time_regex = Regex::new(r"\b(current|exact|system|what is the)\s+(time|date)\b").unwrap();
+    let time_regex = TIME_REGEX.get_or_init(|| {
+        Regex::new(r"\b(current|exact|system|what is the)\s+(time|date)\b")
+            .expect("valid time regex")
+    });
     let loose_time = lower.contains("current time")
         || lower.contains("system time")
         || (lower.contains("time") && (lower.contains("exact") || lower.contains("now")));
@@ -211,16 +218,7 @@ impl MakerOrchestrator {
                 })
             }
             ExecutionPolicy::MakerRace { prompt, n, k } => {
-                let provider = match self.state.model_provider.read() {
-                    Ok(g) => g.clone(),
-                    Err(_) => {
-                        return Ok(ChatResponse {
-                            message: Message { role: Role::Assistant, content: prompt },
-                            status: ExecutionStatus::Done,
-                            maker_context: None,
-                        })
-                    }
-                };
+                let provider = self.state.model_provider.read().await.clone();
                 let content = race_to_k(provider, prompt.clone(), n, k).await;
                 Ok(ChatResponse {
                     message: Message { role: Role::Assistant, content },
@@ -232,16 +230,7 @@ impl MakerOrchestrator {
                 let req = ChatRequest {
                     messages: vec![Message { role: Role::User, content: prompt.clone() }],
                 };
-                let provider = match self.state.model_provider.read() {
-                    Ok(g) => g.clone(),
-                    Err(_) => {
-                        return Ok(ChatResponse {
-                            message: Message { role: Role::Assistant, content: prompt },
-                            status: ExecutionStatus::Done,
-                            maker_context: None,
-                        })
-                    }
-                };
+                let provider = self.state.model_provider.read().await.clone();
                 let res = provider.chat(req).await?;
                 Ok(ChatResponse {
                     message: res.message,
@@ -384,10 +373,7 @@ impl MakerOrchestrator {
             ExecStrategy::MakerRace { n, k } => {
                 let prompt_with_ctx =
                     format!("Context:\n{}\nTask: {}", context_history.trim(), rendered.trim());
-                let provider = match self.state.model_provider.read() {
-                    Ok(g) => g.clone(),
-                    Err(_) => return Ok(rendered.to_string()),
-                };
+                let provider = self.state.model_provider.read().await.clone();
                 Ok(race_to_k(provider, prompt_with_ctx, n, k).await)
             }
             ExecStrategy::SingleProbe => {

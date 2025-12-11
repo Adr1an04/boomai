@@ -81,18 +81,12 @@ pub async fn config_model_reload(State(state): State<AppState>) -> Json<Value> {
         active_config.model.clone(),
     ));
 
-    if let Ok(mut lock) = state.model_provider.write() {
-        *lock = new_provider;
-        Json(json!({
-            "status": "success",
-            "message": "Provider reloaded with current configuration"
-        }))
-    } else {
-        Json(json!({
-            "status": "error",
-            "message": "Failed to acquire provider lock for reload"
-        }))
-    }
+    let mut lock = state.model_provider.write().await;
+    *lock = new_provider;
+    Json(json!({
+        "status": "success",
+        "message": "Provider reloaded with current configuration"
+    }))
 }
 
 pub async fn config_model_rollback(

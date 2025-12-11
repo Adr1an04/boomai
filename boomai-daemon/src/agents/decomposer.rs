@@ -1,8 +1,7 @@
-use crate::core::{
-    Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, ModelProvider, Role,
-};
+use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, ModelProvider, Role};
 use async_trait::async_trait;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 pub struct DecomposerAgent {
     model_provider: Arc<RwLock<Arc<dyn ModelProvider>>>,
@@ -34,21 +33,7 @@ impl Agent for DecomposerAgent {
         let decompose_req = ChatRequest { messages };
 
         // Get the current configured provider
-        let provider = {
-            if let Ok(guard) = self.model_provider.read() {
-                guard.clone()
-            } else {
-                eprintln!("Failed to acquire read lock on model provider in DecomposerAgent");
-                return Ok(ChatResponse {
-                    message: Message {
-                        role: Role::System,
-                        content: "Internal Error: Failed to access model provider".to_string(),
-                    },
-                    status: ExecutionStatus::Failed,
-                    maker_context: None,
-                });
-            }
-        };
+        let provider = self.model_provider.read().await.clone();
 
         provider.chat(decompose_req).await
     }
