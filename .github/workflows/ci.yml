@@ -78,7 +78,7 @@ jobs:
         with:
           tool: nextest
       - name: Run tests (daemon)
-        run: cargo nextest run -p boomai-daemon --all-targets
+        run: cargo nextest run -p boomai-daemon --all-targets --no-tests=run
 
   audit:
     name: Security (audit & deny)
