@@ -132,12 +132,19 @@ The desktop client will automatically connect to the daemon at `localhost:3030`.
 5. Check `docs/FUTURE.md` for the roadmap (concurrency refactor, MAKER scaling, MCP/RAG plans).
 
 Fast checks before PRs:
-- `cargo fmt --all`
-- `cargo clippy -p boomai-daemon -- -D warnings`
-- `cargo check -p boomai-daemon`
-- (if feasible) `cargo test --workspace`
+- `cargo fmt --all -- --check`
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- `cargo nextest run -p boomai-daemon --all-targets` (or `cargo test --workspace` if you don’t have nextest)
+- `cargo audit` and `cargo deny check` (security/licenses)
+- (optional, nightly) `cargo +nightly udeps --workspace --all-targets`
 - Frontend: `cd desktop && npm run lint`
 - Run daemon + desktop and smoke a chat request.
+
+CI summary:
+- Caches cargo + sccache to speed builds.
+- Lint matrix on stable/beta/nightly (fmt on stable, clippy `-D warnings`).
+- Tests on ubuntu + macOS via `cargo nextest`.
+- Security/licensing via `cargo-audit` and `cargo-deny`; unused deps via `cargo-udeps` (non-blocking).
 
 ---
 

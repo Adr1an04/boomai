@@ -37,6 +37,11 @@ export interface InstalledLocalModel {
   runtime_type: string;
 }
 
+export interface McpTool {
+  name: string;
+  description?: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
@@ -62,6 +67,31 @@ export const api = {
     },
   },
   config: {
+    mcp: {
+      async listServers(): Promise<{ servers: string[] }> {
+        const res = await fetch(`${API_BASE}/config/mcp/servers`);
+        if (!res.ok) throw new Error("Failed to list MCP servers");
+        return res.json();
+      },
+      async addServer(id: string, command: string, args: string[]) {
+        const res = await fetch(`${API_BASE}/config/mcp/server/add`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, command, args }),
+        });
+        if (!res.ok) throw new Error("Failed to add MCP server");
+        return res.json();
+      },
+      async listTools(serverId: string): Promise<{ tools: McpTool[] }> {
+        const res = await fetch(`${API_BASE}/config/mcp/tools`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ server_id: serverId }),
+        });
+        if (!res.ok) throw new Error("Failed to list MCP tools");
+        return res.json();
+      },
+    },
     model: {
       test: async (config: ModelConfig): Promise<{ status: string; message: string }> => {
         const res = await fetch(`${API_BASE}/config/model/test`, {
