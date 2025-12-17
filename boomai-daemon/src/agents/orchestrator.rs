@@ -3,14 +3,16 @@ use crate::agents::step::{
     ExecutionContext, Step, ToolKind, ToolRegistry,
 };
 use crate::core::types::ExecutionPolicy;
-use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, ModelRequest, ModelResponse, Role};
-use tokio_util::sync::CancellationToken;
+use crate::core::{
+    Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, ModelRequest, Role,
+};
 use crate::maker::race_to_k;
 use crate::state::AppState;
 use crate::tools::stubs::run_internal_stub;
 use evalexpr::{build_operator_tree, DefaultNumericTypes};
 use regex::Regex;
 use std::sync::{Arc, OnceLock};
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 static YEAR_RE: OnceLock<Regex> = OnceLock::new();
@@ -220,7 +222,8 @@ impl MakerOrchestrator {
             }
             ExecutionPolicy::MakerRace { prompt, n, k } => {
                 let registry = self.state.provider_registry.read().await;
-                let provider = registry.get_default_runner()
+                let provider = registry
+                    .get_default_runner()
                     .ok_or_else(|| anyhow::anyhow!("No default provider configured"))?;
                 let cancellation = tokio_util::sync::CancellationToken::new();
                 let content = race_to_k(provider, prompt.clone(), n, k, cancellation).await;
@@ -391,7 +394,8 @@ impl MakerOrchestrator {
                 let prompt_with_ctx =
                     format!("Context:\n{}\nTask: {}", context_history.trim(), rendered.trim());
                 let registry = self.state.provider_registry.read().await;
-                let provider = registry.get_default_runner()
+                let provider = registry
+                    .get_default_runner()
                     .ok_or_else(|| anyhow::anyhow!("No default provider configured"))?;
                 let cancellation = CancellationToken::new();
                 Ok(race_to_k(provider, prompt_with_ctx, n, k, cancellation).await)

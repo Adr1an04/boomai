@@ -1,6 +1,6 @@
+use crate::core::visibility::Sanitizable;
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
-use crate::core::visibility::{Sanitizable, Visibility};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SystemProfile {
@@ -46,9 +46,9 @@ pub enum MemoryTier {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CpuTier {
-    Basic,  // < 4 cores
-    Good,   // 4-8 cores
-    High,   // > 8 cores
+    Basic, // < 4 cores
+    Good,  // 4-8 cores
+    High,  // > 8 cores
 }
 
 #[derive(Debug, Serialize, Deserialize)]

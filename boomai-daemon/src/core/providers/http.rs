@@ -1,4 +1,4 @@
-use crate::core::model_request::{ModelRequest, ModelResponse, ToolCall};
+use crate::core::model_request::{ModelRequest, ModelResponse};
 use crate::core::provider::ModelProvider;
 use crate::core::provider_error::{ProviderError, ProviderErrorKind, ProviderId};
 use crate::core::types::ModelId;
@@ -66,7 +66,8 @@ impl ModelProvider for HttpProvider {
                     ProviderId(self.base_url.clone()),
                     Some(ModelId(self.model.clone())),
                     "Failed to send request to provider",
-                ).with_source(anyhow::Error::from(e)));
+                )
+                .with_source(anyhow::Error::from(e)));
             }
         };
 
@@ -90,7 +91,8 @@ impl ModelProvider for HttpProvider {
                 ProviderId(self.base_url.clone()),
                 Some(ModelId(self.model.clone())),
                 "API request failed",
-            ).with_internal_detail(format!("HTTP {}: {}", status, error_text)));
+            )
+            .with_internal_detail(format!("HTTP {}: {}", status, error_text)));
         }
 
         let raw_text = match response.text().await {
@@ -101,7 +103,8 @@ impl ModelProvider for HttpProvider {
                     ProviderId(self.base_url.clone()),
                     Some(ModelId(self.model.clone())),
                     "Failed to read response from provider",
-                ).with_source(anyhow::Error::from(e)));
+                )
+                .with_source(anyhow::Error::from(e)));
             }
         };
 
@@ -113,23 +116,22 @@ impl ModelProvider for HttpProvider {
                     ProviderId(self.base_url.clone()),
                     Some(ModelId(self.model.clone())),
                     "Invalid response format from provider",
-                ).with_source(anyhow::Error::from(e)));
+                )
+                .with_source(anyhow::Error::from(e)));
             }
         };
 
-        let content = data["choices"][0]["message"]["content"]
-            .as_str()
-            .ok_or_else(|| ProviderError::new(
+        let content = data["choices"][0]["message"]["content"].as_str().ok_or_else(|| {
+            ProviderError::new(
                 ProviderErrorKind::BadRequest,
                 ProviderId(self.base_url.clone()),
                 Some(ModelId(self.model.clone())),
                 "Invalid response format: missing content",
-            ))?;
+            )
+        })?;
 
         let tool_calls = Vec::new(); // TODO: Parse tool calls from response
-        let finish_reason = data["choices"][0]["finish_reason"]
-            .as_str()
-            .unwrap_or("stop");
+        let finish_reason = data["choices"][0]["finish_reason"].as_str().unwrap_or("stop");
 
         let finish_reason = match finish_reason {
             "stop" => crate::core::model_request::FinishReason::Stop,
@@ -153,9 +155,9 @@ impl ModelProvider for HttpProvider {
             tool_calls,
             finish_reason,
             usage: crate::core::model_request::Usage {
-                prompt_tokens: 0, // TODO: Parse from response
+                prompt_tokens: 0,     // TODO: Parse from response
                 completion_tokens: 0, // TODO: Parse from response
-                total_tokens: 0, // TODO: Parse from response
+                total_tokens: 0,      // TODO: Parse from response
             },
             model_id: ModelId(self.model.clone()),
             latency_ms: duration_ms as u64,

@@ -15,7 +15,7 @@ use crate::agents::MakerOrchestrator;
 use crate::config_persistence::{save_config, update_config};
 use crate::core::visibility::Sanitizable;
 use crate::state::AppState;
-use crate::system::{get_recommendation, get_system_profile, EngineRecommendation, SanitizedSystemProfile};
+use crate::system::{get_recommendation, get_system_profile, EngineRecommendation};
 
 pub async fn health_check() -> Json<Value> {
     Json(json!({ "status": "ok" }))
@@ -59,9 +59,7 @@ pub async fn config_model_test(Json(config): Json<ModelConfig>) -> Json<Value> {
 
     match provider.chat(test_req).await {
         Ok(_) => Json(json!({ "status": "success", "message": "Connection successful" })),
-        Err(e) => {
-            Json(json!({ "status": "error", "message": e.user_message }))
-        }
+        Err(e) => Json(json!({ "status": "error", "message": e.user_message })),
     }
 }
 

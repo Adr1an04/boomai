@@ -1,4 +1,7 @@
-use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, ModelRequest, ModelResponse, ProviderRegistry, Role, ExecutionStatus};
+use crate::core::{
+    Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, ModelRequest,
+    ProviderRegistry, Role,
+};
 use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::RwLock as TokioRwLock;

@@ -12,7 +12,7 @@ use crate::mcp::manager::McpManager;
 pub struct AppState {
     pub config_store: Arc<TokioRwLock<DaemonConfigStore>>,
     pub provider_registry: Arc<TokioRwLock<ProviderRegistry>>,
-    pub global_concurrency_limiter: Arc<Semaphore>, // Global max in-flight requests
+    pub _global_concurrency_limiter: Arc<Semaphore>, // Global max in-flight requests (used during provider registration)
     pub local_manager: LocalModelManager,
     pub mcp_manager: McpManager,
 

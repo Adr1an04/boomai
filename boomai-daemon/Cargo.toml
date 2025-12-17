@@ -4,6 +4,9 @@ version = "0.2.11"
 edition = "2021"
 license = "MIT"
 
+[package.metadata.cargo-udeps.ignore]
+normal = ["futures"]
+
 [dependencies]
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1.0", features = ["full"] }

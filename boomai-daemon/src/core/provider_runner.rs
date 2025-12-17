@@ -18,24 +18,14 @@ pub struct ProviderRunner {
 /// config for provider runner
 #[derive(Debug, Clone)]
 pub struct RunnerConfig {
-    pub connect_timeout_ms: u64,
     pub request_timeout_ms: u64,
-    pub max_retries: u32,
-    pub retry_backoff_ms: u64,
     pub max_concurrent: usize,
     pub cancellation_token: Option<CancellationToken>,
 }
 
 impl Default for RunnerConfig {
     fn default() -> Self {
-        Self {
-            connect_timeout_ms: 5_000,
-            request_timeout_ms: 60_000,
-            max_retries: 2,
-            retry_backoff_ms: 1_000,
-            max_concurrent: 8, 
-            cancellation_token: None,
-        }
+        Self { request_timeout_ms: 60_000, max_concurrent: 8, cancellation_token: None }
     }
 }
 
@@ -43,12 +33,7 @@ impl ProviderRunner {
     /// Create a new ProviderRunner with the given provider and config
     pub fn new(provider: Arc<dyn ModelProvider>, config: RunnerConfig) -> Self {
         let concurrency_limiter = Arc::new(Semaphore::new(config.max_concurrent));
-        Self {
-            provider,
-            config,
-            concurrency_limiter,
-            global_limiter: None,
-        }
+        Self { provider, config, concurrency_limiter, global_limiter: None }
     }
 
     /// Execute a request with policy enforcement (timeouts, retries, concurrency control)
@@ -91,26 +76,19 @@ impl ProviderRunner {
 
         // Execute with timeout
         let timeout_duration = Duration::from_millis(self.config.request_timeout_ms);
-        timeout(timeout_duration, self.provider.chat(request))
-            .await
-            .map_err(|_| {
-                ProviderError::new(
-                    ProviderErrorKind::Timeout,
-                    ProviderId("unknown".to_string()),
-                    None,
-                    "Request timed out",
-                )
-            })?
+        timeout(timeout_duration, self.provider.chat(request)).await.map_err(|_| {
+            ProviderError::new(
+                ProviderErrorKind::Timeout,
+                ProviderId("unknown".to_string()),
+                None,
+                "Request timed out",
+            )
+        })?
     }
 
     /// Set global concurrency limiter
     pub fn with_global_limiter(mut self, global_limiter: Arc<Semaphore>) -> Self {
         self.global_limiter = Some(global_limiter);
         self
-    }
-
-    /// Get current concurrency level (approximate)
-    pub fn current_concurrency(&self) -> usize {
-        self.config.max_concurrent - self.concurrency_limiter.available_permits()
     }
 }

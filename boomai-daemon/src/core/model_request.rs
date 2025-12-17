@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelRequest {
     pub messages: Vec<Message>,
-    pub tools: Vec<ToolSpec>,                    // optional
+    pub tools: Vec<ToolSpec>, // optional
     pub response_format: Option<ResponseFormat>,
     pub max_output_tokens: Option<u32>,
     pub temperature: Option<f32>,
@@ -15,13 +15,13 @@ pub struct ModelRequest {
     pub stream: bool,
 
     // routing hints
-    pub tags: Vec<String>,                       // "classification", "code", "reasoning"
-    pub priority: RequestPriority,               // interactive vs batch
-    pub hard_deadline_ms: Option<u64>,          // end-to-end SLA
+    pub tags: Vec<String>,             // "classification", "code", "reasoning"
+    pub priority: RequestPriority,     // interactive vs batch
+    pub hard_deadline_ms: Option<u64>, // end-to-end SLA
     pub require_json: bool,
 
     // context control
-    pub truncation: TruncationPolicy,            // error vs auto-trim
+    pub truncation: TruncationPolicy, // error vs auto-trim
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,7 +63,7 @@ pub struct ModelResponse {
     pub content: String,
     pub tool_calls: Vec<ToolCall>,
     pub finish_reason: FinishReason,
-    pub usage: Usage,                           // prompt_tokens, completion_tokens
+    pub usage: Usage, // prompt_tokens, completion_tokens
     pub model_id: ModelId,
     pub latency_ms: u64,
     pub warnings: Vec<ResponseWarning>,

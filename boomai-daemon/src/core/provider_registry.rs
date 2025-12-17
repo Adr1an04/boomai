@@ -14,32 +14,24 @@ pub struct ProviderRegistry {
 
 #[derive(Clone)]
 pub struct ProviderEntry {
-    pub provider: Arc<dyn ModelProvider>,
     pub runner: Arc<ProviderRunner>,
-    pub model_id: ModelId,
-    pub provider_type: ProviderType,
 }
 
+/// Provider type classification (kept for parameter compatibility)
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum ProviderType {
+    /// Local model provider (Ollama, llama.cpp, etc.)
     Local,
+    /// Remote API provider (OpenAI, Anthropic, etc.)
     Remote,
+    /// Mock provider for testing
     Mock,
 }
 
 impl ProviderRegistry {
     pub fn new() -> Self {
-        Self {
-            providers: HashMap::new(),
-            default_provider: None,
-        }
-    }
-
-    pub fn with_global_limiter(_global_limiter: Arc<tokio::sync::Semaphore>) -> Self {
-        Self {
-            providers: HashMap::new(),
-            default_provider: None,
-        }
+        Self { providers: HashMap::new(), default_provider: None }
     }
 
     pub fn register_provider(
@@ -47,17 +39,12 @@ impl ProviderRegistry {
         provider_id: ProviderId,
         provider: Arc<dyn ModelProvider>,
         runner_config: RunnerConfig,
-        model_id: ModelId,
-        provider_type: ProviderType,
+        _model_id: ModelId,
+        _provider_type: ProviderType,
     ) {
-        let runner = Arc::new(ProviderRunner::new(provider.clone(), runner_config));
+        let runner = Arc::new(ProviderRunner::new(provider, runner_config));
 
-        let entry = ProviderEntry {
-            provider,
-            runner,
-            model_id,
-            provider_type,
-        };
+        let entry = ProviderEntry { runner };
 
         self.providers.insert(provider_id.clone(), entry);
 
@@ -71,21 +58,15 @@ impl ProviderRegistry {
         provider_id: ProviderId,
         provider: Arc<dyn ModelProvider>,
         runner_config: RunnerConfig,
-        model_id: ModelId,
-        provider_type: ProviderType,
+        _model_id: ModelId,
+        _provider_type: ProviderType,
         global_limiter: Arc<tokio::sync::Semaphore>,
     ) {
         let runner = Arc::new(
-            ProviderRunner::new(provider.clone(), runner_config)
-                .with_global_limiter(global_limiter)
+            ProviderRunner::new(provider, runner_config).with_global_limiter(global_limiter),
         );
 
-        let entry = ProviderEntry {
-            provider,
-            runner,
-            model_id,
-            provider_type,
-        };
+        let entry = ProviderEntry { runner };
 
         self.providers.insert(provider_id.clone(), entry);
 
@@ -107,36 +88,20 @@ impl ProviderRegistry {
             .map(|entry| entry.runner.clone())
     }
 
-    pub fn get_runner(&self, provider_id: &ProviderId) -> Option<Arc<ProviderRunner>> {
-        self.providers.get(provider_id).map(|entry| entry.runner.clone())
-    }
-
-    pub async fn execute_default(&self, request: ModelRequest) -> Result<ModelResponse, ProviderError> {
-        let runner = self.get_default_runner()
-            .ok_or_else(|| ProviderError::new(
+    pub async fn execute_default(
+        &self,
+        request: ModelRequest,
+    ) -> Result<ModelResponse, ProviderError> {
+        let runner = self.get_default_runner().ok_or_else(|| {
+            ProviderError::new(
                 crate::core::provider_error::ProviderErrorKind::Internal("no_default_provider"),
                 ProviderId("registry".to_string()),
                 None,
                 "No default provider configured",
-            ))?;
+            )
+        })?;
 
         runner.execute(request).await
-    }
-
-    pub fn list_providers(&self) -> Vec<(ProviderId, ModelId, ProviderType)> {
-        self.providers.iter()
-            .map(|(id, entry)| (id.clone(), entry.model_id.clone(), entry.provider_type.clone()))
-            .collect()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.providers.is_empty()
-    }
-
-    pub fn total_concurrency(&self) -> usize {
-        self.providers.values()
-            .map(|entry| entry.runner.current_concurrency())
-            .sum()
     }
 }
 

@@ -1,4 +1,6 @@
-use crate::core::{HttpProvider, ModelProvider, ProviderRegistry, ProviderId, ProviderType, RunnerConfig};
+use crate::core::{
+    HttpProvider, ModelProvider, ProviderId, ProviderRegistry, ProviderType, RunnerConfig,
+};
 use axum::{
     routing::{get, post},
     Router,
@@ -163,7 +165,7 @@ async fn main() {
     let state = AppState {
         config_store: config_store_lock.clone(),
         provider_registry: provider_registry_lock,
-        global_concurrency_limiter,
+        _global_concurrency_limiter: global_concurrency_limiter,
         local_manager,
         mcp_manager,
         decomposer_agent,

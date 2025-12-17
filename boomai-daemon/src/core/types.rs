@@ -139,28 +139,6 @@ pub struct ChatRequest {
     pub messages: Vec<Message>,
 }
 
-#[derive(Debug, Default)]
-pub struct ChatRequestBuilder {
-    messages: Vec<Message>,
-}
-
-impl ChatRequest {
-    pub fn builder() -> ChatRequestBuilder {
-        ChatRequestBuilder::default()
-    }
-}
-
-impl ChatRequestBuilder {
-    pub fn messages(mut self, messages: Vec<Message>) -> Self {
-        self.messages = messages;
-        self
-    }
-
-    pub fn build(self) -> ChatRequest {
-        ChatRequest { messages: self.messages }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", content = "data", rename_all = "lowercase")]
 pub enum ExecutionStatus {
