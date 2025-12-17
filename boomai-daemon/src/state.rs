@@ -1,6 +1,6 @@
-use crate::core::ModelProvider;
+use crate::core::ProviderRegistry;
 use std::sync::Arc;
-use tokio::sync::RwLock as TokioRwLock;
+use tokio::sync::{RwLock as TokioRwLock, Semaphore};
 
 use crate::agents::decomposer::DecomposerAgent;
 use crate::agents::router::RouterAgent;
@@ -11,7 +11,8 @@ use crate::mcp::manager::McpManager;
 #[derive(Clone)]
 pub struct AppState {
     pub config_store: Arc<TokioRwLock<DaemonConfigStore>>,
-    pub model_provider: Arc<TokioRwLock<Arc<dyn ModelProvider>>>,
+    pub provider_registry: Arc<TokioRwLock<ProviderRegistry>>,
+    pub global_concurrency_limiter: Arc<Semaphore>, // Global max in-flight requests
     pub local_manager: LocalModelManager,
     pub mcp_manager: McpManager,
 

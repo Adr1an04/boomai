@@ -1,15 +1,15 @@
-use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, ModelProvider, Role};
+use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, Message, ModelRequest, ModelResponse, ProviderRegistry, Role, ExecutionStatus};
 use async_trait::async_trait;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::RwLock as TokioRwLock;
 
 pub struct RouterAgent {
-    model_provider: Arc<RwLock<Arc<dyn ModelProvider>>>,
+    provider_registry: Arc<TokioRwLock<ProviderRegistry>>,
 }
 
 impl RouterAgent {
-    pub fn new(model_provider: Arc<RwLock<Arc<dyn ModelProvider>>>) -> Self {
-        Self { model_provider }
+    pub fn new(provider_registry: Arc<TokioRwLock<ProviderRegistry>>) -> Self {
+        Self { provider_registry }
     }
 }
 
@@ -29,11 +29,32 @@ impl Agent for RouterAgent {
             content: "You are a Router Agent. Analyze the user's request. If it requires external tools (like file search, web search), output a tool call. If it can be answered directly, answer it.".to_string(),
         });
 
-        let router_req = ChatRequest { messages };
+        let model_req = ModelRequest {
+            messages,
+            tools: Vec::new(),
+            response_format: None,
+            max_output_tokens: None,
+            temperature: None,
+            top_p: None,
+            stop: Vec::new(),
+            seed: None,
+            stream: false,
+            tags: Vec::new(),
+            priority: crate::core::model_request::RequestPriority::Background,
+            hard_deadline_ms: None,
+            require_json: false,
+            truncation: crate::core::model_request::TruncationPolicy::ErrorIfTooLarge,
+        };
 
-        // Get the current configured provider
-        let provider = self.model_provider.read().await.clone();
+        // Execute using the provider registry
+        let registry = self.provider_registry.read().await;
+        let model_resp = registry.execute_default(model_req).await?;
 
-        provider.chat(router_req).await
+        // Convert back to ChatResponse
+        Ok(ChatResponse {
+            message: Message { role: Role::Assistant, content: model_resp.content },
+            status: ExecutionStatus::Done,
+            maker_context: None,
+        })
     }
 }

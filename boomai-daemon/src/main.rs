@@ -1,10 +1,10 @@
-use crate::core::{HttpProvider, ModelProvider};
+use crate::core::{HttpProvider, ModelProvider, ProviderRegistry, ProviderId, ProviderType, RunnerConfig};
 use axum::{
     routing::{get, post},
     Router,
 };
 use std::sync::Arc;
-use tokio::sync::RwLock as TokioRwLock;
+use tokio::sync::{RwLock as TokioRwLock, Semaphore};
 
 mod agents;
 mod config;
@@ -100,13 +100,32 @@ async fn main() {
         }
     };
 
-    // new provider with loaded config
+    let global_concurrency_limiter = Arc::new(Semaphore::new(16)); // Allow up to 16 concurrent requests system-wide
+
+    // provide registry
+    let mut provider_registry = ProviderRegistry::new();
+
+    // register default HTTP provider
     let provider: Arc<dyn ModelProvider> = Arc::new(HttpProvider::new(
         config_store.active_config.base_url.clone(),
         config_store.active_config.api_key.clone(),
         config_store.active_config.model.clone(),
     ));
-    let provider_lock = Arc::new(TokioRwLock::new(provider.clone()));
+
+    let runner_config = RunnerConfig::default();
+    let provider_id = ProviderId("default".to_string());
+    let model_id = config_store.active_config.model.clone().into();
+
+    provider_registry.register_provider_with_global_limiter(
+        provider_id.clone(),
+        provider,
+        runner_config,
+        model_id,
+        ProviderType::Remote, // remote for now, will be enhanced later
+        global_concurrency_limiter.clone(),
+    );
+
+    let provider_registry_lock = Arc::new(TokioRwLock::new(provider_registry));
 
     let local_manager = LocalModelManager::new();
     if let Err(e) = local_manager.sync_with_ollama().await {
@@ -135,14 +154,16 @@ async fn main() {
     }
     let mcp_manager = McpManager::new();
 
-    let decomposer_agent = Arc::new(DecomposerAgent::new(provider_lock.clone()));
-    let router_agent = Arc::new(RouterAgent::new(provider_lock.clone()));
+    // Create agents with registry access
+    let decomposer_agent = Arc::new(DecomposerAgent::new(provider_registry_lock.clone()));
+    let router_agent = Arc::new(RouterAgent::new(provider_registry_lock.clone()));
 
     let config_store_lock = Arc::new(TokioRwLock::new(config_store));
 
     let state = AppState {
         config_store: config_store_lock.clone(),
-        model_provider: provider_lock,
+        provider_registry: provider_registry_lock,
+        global_concurrency_limiter,
         local_manager,
         mcp_manager,
         decomposer_agent,

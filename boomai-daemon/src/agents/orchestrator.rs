@@ -3,7 +3,8 @@ use crate::agents::step::{
     ExecutionContext, Step, ToolKind, ToolRegistry,
 };
 use crate::core::types::ExecutionPolicy;
-use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, Role};
+use crate::core::{Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, ModelRequest, ModelResponse, Role};
+use tokio_util::sync::CancellationToken;
 use crate::maker::race_to_k;
 use crate::state::AppState;
 use crate::tools::stubs::run_internal_stub;
@@ -218,8 +219,11 @@ impl MakerOrchestrator {
                 })
             }
             ExecutionPolicy::MakerRace { prompt, n, k } => {
-                let provider = self.state.model_provider.read().await.clone();
-                let content = race_to_k(provider, prompt.clone(), n, k).await;
+                let registry = self.state.provider_registry.read().await;
+                let provider = registry.get_default_runner()
+                    .ok_or_else(|| anyhow::anyhow!("No default provider configured"))?;
+                let cancellation = tokio_util::sync::CancellationToken::new();
+                let content = race_to_k(provider, prompt.clone(), n, k, cancellation).await;
                 Ok(ChatResponse {
                     message: Message { role: Role::Assistant, content },
                     status: ExecutionStatus::Done,
@@ -227,13 +231,26 @@ impl MakerOrchestrator {
                 })
             }
             ExecutionPolicy::SingleProbe { prompt } => {
-                let req = ChatRequest {
+                let model_req = ModelRequest {
                     messages: vec![Message { role: Role::User, content: prompt.clone() }],
+                    tools: Vec::new(),
+                    response_format: None,
+                    max_output_tokens: None,
+                    temperature: None,
+                    top_p: None,
+                    stop: Vec::new(),
+                    seed: None,
+                    stream: false,
+                    tags: Vec::new(),
+                    priority: crate::core::model_request::RequestPriority::Background,
+                    hard_deadline_ms: None,
+                    require_json: false,
+                    truncation: crate::core::model_request::TruncationPolicy::ErrorIfTooLarge,
                 };
-                let provider = self.state.model_provider.read().await.clone();
-                let res = provider.chat(req).await?;
+                let registry = self.state.provider_registry.read().await;
+                let res = registry.execute_default(model_req).await?;
                 Ok(ChatResponse {
-                    message: res.message,
+                    message: Message { role: Role::Assistant, content: res.content },
                     status: ExecutionStatus::Done,
                     maker_context: None,
                 })
@@ -373,8 +390,11 @@ impl MakerOrchestrator {
             ExecStrategy::MakerRace { n, k } => {
                 let prompt_with_ctx =
                     format!("Context:\n{}\nTask: {}", context_history.trim(), rendered.trim());
-                let provider = self.state.model_provider.read().await.clone();
-                Ok(race_to_k(provider, prompt_with_ctx, n, k).await)
+                let registry = self.state.provider_registry.read().await;
+                let provider = registry.get_default_runner()
+                    .ok_or_else(|| anyhow::anyhow!("No default provider configured"))?;
+                let cancellation = CancellationToken::new();
+                Ok(race_to_k(provider, prompt_with_ctx, n, k, cancellation).await)
             }
             ExecStrategy::SingleProbe => {
                 let prompt_with_ctx =

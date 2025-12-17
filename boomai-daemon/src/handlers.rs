@@ -1,7 +1,7 @@
-use crate::core::types::ChatRequestBuilder;
+use crate::core::model_request::{ModelRequest, RequestPriority, TruncationPolicy};
 use crate::core::{
     ChatRequest, ChatResponse, ExecutionStatus, HttpProvider, Message, ModelConfig, ModelId,
-    ModelProvider, Role, ServerId,
+    ModelProvider, ProviderId, ProviderType, Role, RunnerConfig, ServerId,
 };
 use axum::{
     extract::{Path, State},
@@ -13,8 +13,9 @@ use std::sync::Arc;
 
 use crate::agents::MakerOrchestrator;
 use crate::config_persistence::{save_config, update_config};
+use crate::core::visibility::Sanitizable;
 use crate::state::AppState;
-use crate::system::{get_recommendation, get_system_profile, EngineRecommendation, SystemProfile};
+use crate::system::{get_recommendation, get_system_profile, EngineRecommendation, SanitizedSystemProfile};
 
 pub async fn health_check() -> Json<Value> {
     Json(json!({ "status": "ok" }))
@@ -24,8 +25,8 @@ pub async fn version_check() -> Json<Value> {
     Json(json!({ "version": env!("CARGO_PKG_VERSION") }))
 }
 
-pub async fn system_profile_handler() -> Json<SystemProfile> {
-    Json(get_system_profile())
+pub async fn system_profile_handler() -> Json<crate::system::SanitizedSystemProfile> {
+    Json(get_system_profile().sanitized())
 }
 
 pub async fn system_recommendation_handler() -> Json<EngineRecommendation> {
@@ -39,14 +40,27 @@ pub async fn config_model_test(Json(config): Json<ModelConfig>) -> Json<Value> {
     let provider =
         HttpProvider::new(config.base_url.clone(), config.api_key.clone(), config.model.clone());
 
-    let test_req = ChatRequestBuilder::default()
-        .messages(vec![Message { role: Role::User, content: "Hello".to_string() }])
-        .build();
+    let test_req = ModelRequest {
+        messages: vec![Message { role: Role::User, content: "Hello".to_string() }],
+        tools: Vec::new(),
+        response_format: None,
+        max_output_tokens: None,
+        temperature: None,
+        top_p: None,
+        stop: Vec::new(),
+        seed: None,
+        stream: false,
+        tags: Vec::new(),
+        priority: RequestPriority::Background,
+        hard_deadline_ms: None,
+        require_json: false,
+        truncation: TruncationPolicy::ErrorIfTooLarge,
+    };
 
     match provider.chat(test_req).await {
         Ok(_) => Json(json!({ "status": "success", "message": "Connection successful" })),
         Err(e) => {
-            Json(json!({ "status": "error", "message": format!("Connection failed: {}", e) }))
+            Json(json!({ "status": "error", "message": e.user_message }))
         }
     }
 }
@@ -83,8 +97,23 @@ pub async fn config_model_reload(State(state): State<AppState>) -> Json<Value> {
         active_config.model.clone(),
     ));
 
-    let mut lock = state.model_provider.write().await;
-    *lock = new_provider;
+    let mut registry = state.provider_registry.write().await;
+
+    // old default provider and register the new one
+    let provider_id = ProviderId("default".to_string());
+    let runner_config = RunnerConfig::default();
+    let model_id = active_config.model.clone().into();
+
+    // handle re down the road if model changes
+    registry.register_provider(
+        provider_id.clone(),
+        new_provider,
+        runner_config,
+        model_id,
+        ProviderType::Remote,
+    );
+    registry.set_default(provider_id);
+
     Json(json!({
         "status": "success",
         "message": "Provider reloaded with current configuration"

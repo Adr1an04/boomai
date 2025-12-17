@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
+use crate::core::visibility::{Sanitizable, Visibility};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SystemProfile {
@@ -23,6 +24,38 @@ pub struct EngineRecommendation {
     pub recommended_engine: EngineType,
     pub recommended_model: Option<String>,
     pub reason: String,
+}
+
+/// sanitized version of system profile for UI/API exposure
+/// this needs a way broader than just system profile in future
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SanitizedSystemProfile {
+    pub os_name: String,
+    pub architecture: String,
+    pub memory_tier: MemoryTier,
+    pub cpu_tier: CpuTier,
+    pub network_status: NetworkStatus,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum MemoryTier {
+    Low,    // < 8GB
+    Medium, // 8-32GB
+    High,   // > 32GB
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum CpuTier {
+    Basic,  // < 4 cores
+    Good,   // 4-8 cores
+    High,   // > 8 cores
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum NetworkStatus {
+    Online,
+    Restricted,
+    Offline,
 }
 
 pub fn get_system_profile() -> SystemProfile {
@@ -89,6 +122,35 @@ pub fn get_recommendation(profile: &SystemProfile) -> EngineRecommendation {
             recommended_engine: EngineType::Cloud,
             recommended_model: None,
             reason: format!("Your system has limited resources ({}GB RAM). Cloud API is recommended for best performance.", profile.total_memory_gb),
+        }
+    }
+}
+
+impl Sanitizable for SystemProfile {
+    type Sanitized = SanitizedSystemProfile;
+
+    fn sanitized(&self) -> Self::Sanitized {
+        let memory_tier = match self.total_memory_gb {
+            0..=7 => MemoryTier::Low,
+            8..=32 => MemoryTier::Medium,
+            _ => MemoryTier::High,
+        };
+
+        let cpu_tier = match self.cpu_cores {
+            0..=3 => CpuTier::Basic,
+            4..=8 => CpuTier::Good,
+            _ => CpuTier::High,
+        };
+
+        // TODO: actual network detection
+        let network_status = NetworkStatus::Online;
+
+        SanitizedSystemProfile {
+            os_name: self.os_name.clone(),
+            architecture: self.architecture.clone(),
+            memory_tier,
+            cpu_tier,
+            network_status,
         }
     }
 }

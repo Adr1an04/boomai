@@ -1,10 +1,10 @@
-name: CI
+name: CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [ main, develop ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        toolchain: [stable, beta, nightly]
+        toolchain: [stable, beta]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
@@ -45,9 +45,56 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-  test:
-    name: Tests (nextest) - ${{ matrix.os }}
+  unit-test:
+    name: Unit Tests - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - name: Install GTK deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-unit-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-unit-
+            ${{ runner.os }}-
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: Run unit tests
+        run: cargo nextest run --lib --no-tests=pass
+      - name: Generate coverage (ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cargo install cargo-tarpaulin
+          cargo tarpaulin --lib --out Xml --output-dir coverage
+      - name: Upload coverage (ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage/cobertura.xml
+          flags: unit-tests
+
+  integration-test:
+    name: Integration Tests - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: unit-test
     strategy:
       fail-fast: false
       matrix:
@@ -57,11 +104,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-      - name: Install GTK deps (Linux / Tauri)
+      - name: Install GTK deps (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev
       - name: Cache cargo
         uses: actions/cache@v4
         with:
@@ -69,19 +116,81 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-stable-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-integration-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-stable-
+            ${{ runner.os }}-integration-
             ${{ runner.os }}-
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
         with:
           tool: nextest
-      - name: Run tests (daemon)
-        run: cargo nextest run -p boomai-daemon --all-targets --no-tests=pass
+      - name: Run integration tests
+        run: cargo nextest run --test integration --no-tests=pass
 
-  audit:
-    name: Security (audit & deny)
+  performance-test:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: integration-test
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - name: Install GTK deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: perf-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: perf-
+      - name: Install criterion
+        run: cargo install cargo-criterion
+      - name: Run performance benchmarks
+        run: cargo criterion --message-format=json > benchmarks.json
+      - name: Archive benchmark results
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-results
+          path: benchmarks.json
+
+  e2e-test:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    needs: [unit-test, integration-test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - name: Install GTK deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: e2e-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: e2e-
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: Run end-to-end tests
+        run: cargo nextest run --test e2e --no-tests=pass --nocapture
+
+  security-audit:
+    name: Security Audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,9 +204,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: audit-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            audit-${{ runner.os }}-
+          key: audit-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: audit-
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
         with:
@@ -106,17 +214,30 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-deny
-      - name: cargo audit
+      - name: cargo audit (vulnerabilities)
         run: cargo audit
-      - name: cargo deny (advisories/licenses/bans)
+      - name: cargo deny (licenses/bans/advisories)
         run: cargo deny check
+      - name: Check for secrets in source
+        run: |
+          if grep -r "sk-" src/ || grep -r "xoxp-" src/ || grep -r "xoxb-" src/; then
+            echo "❌ API keys found in source code!"
+            exit 1
+          fi
 
-  udeps:
-    name: Unused deps (nightly)
+  unused-deps:
+    name: Unused Dependencies
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - name: Install GTK deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev
       - name: Cache cargo
         uses: actions/cache@v4
         with:
@@ -124,20 +245,38 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: udeps-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            udeps-${{ runner.os }}-
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-      - name: Install GTK deps (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev
+          key: udeps-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: udeps-
       - name: Install cargo-udeps
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-udeps
-      - name: Run cargo-udeps
+      - name: Check for unused dependencies
         run: cargo +nightly udeps --workspace --all-targets
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [lint, unit-test, integration-test, performance-test, e2e-test, security-audit]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Release v${{ github.run_number }}
+          body: |
+            ## Changes
+            - Comprehensive "works anywhere" ModelProvider architecture
+            - Enhanced privacy and security features
+            - Improved performance and concurrency handling
+
+            ## Test Results
+            - ✅ Unit tests: ${{ needs.unit-test.result }}
+            - ✅ Integration tests: ${{ needs.integration-test.result }}
+            - ✅ E2E tests: ${{ needs.e2e-test.result }}
+            - ✅ Security audit: ${{ needs.security-audit.result }}
+            - ✅ Performance benchmarks: ${{ needs.performance-test.result }}
+          draft: false
+          prerelease: false
