@@ -213,7 +213,7 @@ jobs:
       - name: Check for secrets in source
         run: |
           if grep -r "sk-" src/ || grep -r "xoxp-" src/ || grep -r "xoxb-" src/; then
-            echo "❌ API keys found in source code!"
+            echo "API keys found in source code!"
             exit 1
           fi
 
@@ -255,22 +255,32 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Get version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' boomai-daemon/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          git fetch --tags
+          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag v${{ steps.version.outputs.version }} already exists, skipping release"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Creating new release v${{ steps.version.outputs.version }}"
+          fi
       - name: Create release
+        if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: Release v${{ github.run_number }}
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
           body: |
-            ## Changes
-            - Comprehensive "works anywhere" ModelProvider architecture
-            - Enhanced privacy and security features
-            - Improved performance and concurrency handling
-
-            ## Test Results
-            - ✅ Unit tests: ${{ needs.unit-test.result }}
-            - ✅ Integration tests: ${{ needs.integration-test.result }}
-            - ✅ E2E tests: ${{ needs.e2e-test.result }}
-            - ✅ Security audit: ${{ needs.security-audit.result }}
-            - ✅ Performance benchmarks: ${{ needs.performance-test.result }}
+            Release v${{ steps.version.outputs.version }}
           draft: false
           prerelease: false
