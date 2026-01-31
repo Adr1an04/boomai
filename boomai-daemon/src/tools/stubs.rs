@@ -1,7 +1,6 @@
 use chrono::Local;
 
-/// run internal deterministic stubs
-#[allow(dead_code)]
+/// Run internal deterministic stubs (calculator, system_time)
 pub fn run_internal_stub(tool: &str, input: &str) -> Option<String> {
     match tool {
         "system_time" => Some(Local::now().format("%Y-%m-%d %H:%M:%S").to_string()),

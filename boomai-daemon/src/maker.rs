@@ -8,8 +8,7 @@ use std::sync::Arc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
-/// race n workers to first-to-k agreement
-#[allow(dead_code)]
+/// Race n workers to first-to-k agreement (MAKER voting primitive)
 pub async fn race_to_k(
     provider: Arc<ProviderRunner>,
     prompt: String,

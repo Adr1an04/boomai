@@ -2,7 +2,6 @@ use crate::core::model_request::{ModelRequest, ModelResponse};
 use crate::core::provider::ModelProvider;
 use crate::core::provider_error::{ProviderError, ProviderId};
 use crate::core::provider_runner::{ProviderRunner, RunnerConfig};
-use crate::core::types::ModelId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -17,18 +16,6 @@ pub struct ProviderEntry {
     pub runner: Arc<ProviderRunner>,
 }
 
-/// Provider type classification (kept for parameter compatibility)
-#[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
-pub enum ProviderType {
-    /// Local model provider (Ollama, llama.cpp, etc.)
-    Local,
-    /// Remote API provider (OpenAI, Anthropic, etc.)
-    Remote,
-    /// Mock provider for testing
-    Mock,
-}
-
 impl ProviderRegistry {
     pub fn new() -> Self {
         Self { providers: HashMap::new(), default_provider: None }
@@ -39,8 +26,6 @@ impl ProviderRegistry {
         provider_id: ProviderId,
         provider: Arc<dyn ModelProvider>,
         runner_config: RunnerConfig,
-        _model_id: ModelId,
-        _provider_type: ProviderType,
     ) {
         let runner = Arc::new(ProviderRunner::new(provider, runner_config));
 
@@ -58,8 +43,6 @@ impl ProviderRegistry {
         provider_id: ProviderId,
         provider: Arc<dyn ModelProvider>,
         runner_config: RunnerConfig,
-        _model_id: ModelId,
-        _provider_type: ProviderType,
         global_limiter: Arc<tokio::sync::Semaphore>,
     ) {
         let runner = Arc::new(

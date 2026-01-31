@@ -1,6 +1,4 @@
-use crate::core::{
-    HttpProvider, ModelProvider, ProviderId, ProviderRegistry, ProviderType, RunnerConfig,
-};
+use crate::core::{HttpProvider, ModelProvider, ProviderId, ProviderRegistry, RunnerConfig};
 use axum::{
     routing::{get, post},
     Router,
@@ -116,14 +114,11 @@ async fn main() {
 
     let runner_config = RunnerConfig::default();
     let provider_id = ProviderId("default".to_string());
-    let model_id = config_store.active_config.model.clone().into();
 
     provider_registry.register_provider_with_global_limiter(
         provider_id.clone(),
         provider,
         runner_config,
-        model_id,
-        ProviderType::Remote, // remote for now, will be enhanced later
         global_concurrency_limiter.clone(),
     );
 

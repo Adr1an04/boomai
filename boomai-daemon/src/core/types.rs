@@ -1,35 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-/// Reserved for future multi-step planner phases (kept documented intentionally).
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum StepType {
-    Deterministic, // Math, time, system info
-    Probabilistic, // Creative or reasoning-heavy tasks
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub enum StepKind {
-    Math,
-    Time,
-    Creative,
-    #[default]
-    Other,
-}
-
-/// Structured plan step used by planned planner integrations.
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PlanStep {
-    pub id: usize,
-    pub description: String,
-    pub step_type: StepType,
-    #[serde(default)]
-    pub context_keys: Vec<String>,
-    #[serde(default)]
-    pub kind: StepKind,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ExecutionPolicy {
     DecomposeAndExecute,
@@ -82,13 +52,6 @@ impl ServerId {
 impl std::fmt::Display for ServerId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-impl ToolName {
-    #[allow(dead_code)]
-    pub fn as_str(&self) -> &str {
-        &self.0
     }
 }
 
@@ -226,12 +189,6 @@ impl ModelConfigBuilder {
         self
     }
 
-    #[allow(dead_code)]
-    pub fn api_key(mut self, api_key: impl Into<String>) -> Self {
-        self.api_key = Some(api_key.into());
-        self
-    }
-
     pub fn model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
         self
@@ -269,51 +226,4 @@ pub struct InstalledLocalModel {
     pub is_running: bool,
     pub port: u16,
     pub runtime_type: String,
-}
-
-// --- MCP core types ---
-
-/// MCP transport definition (kept for upcoming MCP client wiring).
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-pub enum McpTransport {
-    /// Local process via stdio (e.g., npx/pip tool).
-    Stdio {
-        command: String,
-        #[serde(default)]
-        args: Vec<String>,
-        #[serde(default)]
-        env: Vec<(String, String)>,
-    },
-    /// Remote SSE/HTTP endpoint (e.g., hosted MCP server).
-    Sse {
-        url: String,
-        #[serde(default)]
-        api_key: Option<String>,
-    },
-}
-
-/// MCP manifest schema for future server discovery/registration flows.
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct McpManifest {
-    pub name: String,
-    #[serde(default)]
-    pub description: String,
-    #[serde(default)]
-    pub logo: Option<String>,
-    #[serde(default)]
-    pub required_env_vars: Vec<String>,
-}
-
-/// Installed mod record (planned mods module still in progress).
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct InstalledMod {
-    pub id: String,
-    pub manifest: McpManifest,
-    pub transport: McpTransport,
-    #[serde(default)]
-    pub enabled: bool,
 }

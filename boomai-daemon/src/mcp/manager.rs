@@ -52,28 +52,4 @@ impl McpManager {
         let clients = self.clients.read().await;
         clients.keys().map(|id| id.as_str().to_string()).collect()
     }
-
-    /// Best-effort shutdown of a specific client.
-    #[allow(dead_code)]
-    pub async fn shutdown_client(&self, id: &ServerId) {
-        let client = {
-            let mut clients = self.clients.write().await;
-            clients.remove(id)
-        };
-        if let Some(c) = client {
-            c.shutdown().await;
-        }
-    }
-
-    /// Best-effort shutdown of all clients.
-    #[allow(dead_code)]
-    pub async fn shutdown_all(&self) {
-        let clients: Vec<_> = {
-            let mut guard = self.clients.write().await;
-            guard.drain().collect()
-        };
-        for (_, client) in clients {
-            client.shutdown().await;
-        }
-    }
 }

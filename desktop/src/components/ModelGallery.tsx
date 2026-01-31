@@ -107,12 +107,10 @@ export function ModelGallery({ onBack, onSelectModel }: Props) {
               </div>
             )}
 
-            <div className="section">
-              <h4>Available Models</h4>
-              {available.length === 0 ? (
-                <p>No models available</p>
-              ) : (
-                available.map((model) => (
+            {available.filter(m => m.runtime_type !== "cloud").length > 0 && (
+              <div className="section">
+                <h4>Available Local Models</h4>
+                {available.filter(m => m.runtime_type !== "cloud").map((model) => (
                   <div key={model.id} className="model-item">
                     <div>
                       <strong>{model.name}</strong>
@@ -121,9 +119,29 @@ export function ModelGallery({ onBack, onSelectModel }: Props) {
                     </div>
                     <button onClick={() => handleInstall(model.id)}>Install</button>
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            )}
+
+            {available.filter(m => m.runtime_type === "cloud").length > 0 && (
+              <div className="section">
+                <h4>Cloud API Models</h4>
+                {available.filter(m => m.runtime_type === "cloud").map((model) => (
+                  <div key={model.id} className="model-item cloud">
+                    <div>
+                      <strong>{model.name}</strong>
+                      <span className="badge cloud">API</span>
+                      <p>{model.description}</p>
+                    </div>
+                    <button onClick={() => onSelectModel({
+                      base_url: model.download_url.replace("cloud:", ""),
+                      model: model.id,
+                      api_key: "",
+                    })}>Configure</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 

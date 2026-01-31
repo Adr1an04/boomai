@@ -4,9 +4,6 @@ version = "0.3.2"
 edition = "2021"
 license = "MIT"
 
-[package.metadata.cargo-udeps.ignore]
-normal = ["futures"]
-
 [dependencies]
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1.0", features = ["full"] }
@@ -18,7 +15,6 @@ uuid = { version = "1.18.1", features = ["v4", "serde"] }
 async-trait = "0.1.89"
 anyhow = "1.0.100"
 chrono = { version = "0.4", features = ["serde"] }
-futures = "0.3"
 dirs = "5.0"
 url = "2.5"
 evalexpr = "13.1.0"

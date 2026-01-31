@@ -98,6 +98,26 @@ input {
   border-color: #646cff;
 }
 
+.model-item.cloud {
+  background: #fff9f0;
+  border-color: #ff9800;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  margin-left: 0.5rem;
+  text-transform: uppercase;
+}
+
+.badge.cloud {
+  background: #fff3e0;
+  color: #e65100;
+}
+
 .model-item div {
   flex: 1;
 }
@@ -270,6 +290,16 @@ button[type="button"]:hover {
   .model-item.installed {
     background: #2a2a40;
     border-color: #646cff;
+  }
+
+  .model-item.cloud {
+    background: #3a3020;
+    border-color: #ff9800;
+  }
+
+  .badge.cloud {
+    background: #4a3a20;
+    color: #ffb74d;
   }
 
 .tool-list {

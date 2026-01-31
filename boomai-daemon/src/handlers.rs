@@ -1,7 +1,7 @@
 use crate::core::model_request::{ModelRequest, RequestPriority, TruncationPolicy};
 use crate::core::{
     ChatRequest, ChatResponse, ExecutionStatus, HttpProvider, Message, ModelConfig, ModelId,
-    ModelProvider, ProviderId, ProviderType, Role, RunnerConfig, ServerId,
+    ModelProvider, ProviderId, Role, RunnerConfig, ServerId,
 };
 use axum::{
     extract::{Path, State},
@@ -100,16 +100,9 @@ pub async fn config_model_reload(State(state): State<AppState>) -> Json<Value> {
     // old default provider and register the new one
     let provider_id = ProviderId("default".to_string());
     let runner_config = RunnerConfig::default();
-    let model_id = active_config.model.clone().into();
 
     // handle re down the road if model changes
-    registry.register_provider(
-        provider_id.clone(),
-        new_provider,
-        runner_config,
-        model_id,
-        ProviderType::Remote,
-    );
+    registry.register_provider(provider_id.clone(), new_provider, runner_config);
     registry.set_default(provider_id);
 
     Json(json!({

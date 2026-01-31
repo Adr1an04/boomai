@@ -185,16 +185,6 @@ impl McpClient {
         let result: McpListToolsResult = serde_json::from_value(result_value)?;
         Ok(result)
     }
-
-    /// Explicit, awaited shutdown for transports that need cleanup.
-    #[allow(dead_code)]
-    pub async fn shutdown(&self) {
-        if let Transport::Stdio { server_process, .. } = &self.transport {
-            let mut child = server_process.lock().await;
-            let _ = child.kill().await;
-        }
-        // HTTP/SSE transport has no explicit shutdown hook today.
-    }
 }
 
 impl Drop for McpClient {
