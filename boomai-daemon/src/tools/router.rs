@@ -8,11 +8,7 @@ impl ToolRouter {
     }
 
     pub async fn execute(&self, _req: ToolRequest) -> ToolResponse {
-        ToolResponse {
-            ok: false,
-            output: None,
-            error: Some("Tool execution not wired yet".into()),
-        }
+        ToolResponse { ok: false, output: None, error: Some("Tool execution not wired yet".into()) }
     }
 }
 

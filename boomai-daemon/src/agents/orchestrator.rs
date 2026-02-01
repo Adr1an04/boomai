@@ -199,8 +199,7 @@ impl MakerOrchestrator {
         // Pull the latest user text for deterministic pre-flight routing.
         let user_text =
             initial_req.messages.last().map(|m| m.content.to_lowercase()).unwrap_or_default();
-        let run_id = RunId::new();
-        let taint = TaintLevel::UserProvided;
+        let exec_ctx = StepExecContext { run_id: RunId::new(), taint: TaintLevel::UserProvided };
 
         let policy = classify_intent(&user_text, true);
         info!(target: "maker", policy = ?policy, "POLICY_SELECTED");
@@ -208,7 +207,7 @@ impl MakerOrchestrator {
         match policy {
             ExecutionPolicy::DecomposeAndExecute => {
                 info!(target: "maker", "ENTER run_compound");
-                let content = self.run_compound(&user_text, run_id.clone(), taint).await?;
+                let content = self.run_compound(&user_text, exec_ctx.clone()).await?;
                 Ok(ChatResponse {
                     message: Message { role: Role::Assistant, content },
                     status: ExecutionStatus::Done,
@@ -217,8 +216,7 @@ impl MakerOrchestrator {
             }
             ExecutionPolicy::InternalStub { tool_name, args } => {
                 let _ = args;
-                let content =
-                    self.request_internal_stub(run_id.clone(), &tool_name, None, taint).await;
+                let content = self.request_internal_stub(&exec_ctx, &tool_name, None).await;
                 Ok(ChatResponse {
                     message: Message { role: Role::Assistant, content },
                     status: ExecutionStatus::Done,
@@ -269,8 +267,7 @@ impl MakerOrchestrator {
     async fn run_compound(
         &self,
         prompt: &str,
-        run_id: RunId,
-        taint: TaintLevel,
+        exec_ctx: StepExecContext,
     ) -> anyhow::Result<String> {
         // Prefer deterministic templates for known patterns to avoid decomposer drift.
         let steps_raw = if let Some(template) = pattern_plan(prompt) {
@@ -340,8 +337,7 @@ impl MakerOrchestrator {
                     strategy,
                     &ctx,
                     &context_history,
-                    &run_id,
-                    taint,
+                    &exec_ctx,
                 )
                 .await?;
 
@@ -361,21 +357,13 @@ impl MakerOrchestrator {
         strategy: ExecStrategy,
         ctx: &ExecutionContext,
         context_history: &str,
-        run_id: &RunId,
-        taint: TaintLevel,
+        exec_ctx: &StepExecContext,
     ) -> anyhow::Result<String> {
         match strategy {
             ExecStrategy::ToolCall(tool) => match tool {
-                ToolKind::SystemTime => {
-                    Ok(self
-                        .request_internal_stub(
-                            run_id.clone(),
-                            "system_time",
-                            Some(step.id.to_string()),
-                            taint,
-                        )
-                        .await)
-                }
+                ToolKind::SystemTime => Ok(self
+                    .request_internal_stub(exec_ctx, "system_time", Some(step.id.to_string()))
+                    .await),
                 ToolKind::Calculator => {
                     // replace prior timestamp with its year before parsing
                     let mut candidate = rendered.to_string();
@@ -409,10 +397,9 @@ impl MakerOrchestrator {
                         let _ = e;
                         return Ok(self
                             .request_internal_stub(
-                                run_id.clone(),
+                                exec_ctx,
                                 "calculator",
                                 Some(step.id.to_string()),
-                                taint,
                             )
                             .await);
                     }
@@ -443,19 +430,18 @@ impl MakerOrchestrator {
 
     async fn request_internal_stub(
         &self,
-        run_id: RunId,
+        exec_ctx: &StepExecContext,
         tool_name: &str,
         step_id: Option<String>,
-        taint: TaintLevel,
     ) -> String {
         let router = ToolRouter::new();
         let req = ToolRequest {
             capability_request: CapabilityRequest {
-                run_id,
+                run_id: exec_ctx.run_id.clone(),
                 capability: Capability::InternalStub,
                 args: CapabilityArgs::InternalStub { name: tool_name.to_string() },
                 caller: CapabilityCaller::Orchestrator,
-                taint,
+                taint: exec_ctx.taint,
                 step_id,
             },
         };
@@ -481,4 +467,10 @@ fn first_number(text: &str) -> Option<f64> {
         }
     }
     None
+}
+
+#[derive(Clone)]
+struct StepExecContext {
+    run_id: RunId,
+    taint: TaintLevel,
 }

@@ -28,32 +28,13 @@ impl RunId {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CapabilityArgs {
-    FsRead {
-        path: PathBuf,
-    },
-    FsWrite {
-        path: PathBuf,
-        bytes: usize,
-        diff_preview: Option<String>,
-    },
-    FsDelete {
-        path: PathBuf,
-    },
-    NetHttp {
-        method: String,
-        domain: String,
-    },
-    InternalStub {
-        name: String,
-    },
-    McpCall {
-        server: String,
-        tool: String,
-    },
-    RestrictedCommand {
-        command: String,
-        args: Vec<String>,
-    },
+    FsRead { path: PathBuf },
+    FsWrite { path: PathBuf, bytes: usize, diff_preview: Option<String> },
+    FsDelete { path: PathBuf },
+    NetHttp { method: String, domain: String },
+    InternalStub { name: String },
+    McpCall { server: String, tool: String },
+    RestrictedCommand { command: String, args: Vec<String> },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

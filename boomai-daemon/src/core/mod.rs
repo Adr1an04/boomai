@@ -12,9 +12,7 @@ pub mod types;
 pub mod visibility;
 
 pub use agent::{Agent, AgentContext};
-pub use capabilities::{
-    Capability, CapabilityArgs, CapabilityCaller, CapabilityRequest, RunId,
-};
+pub use capabilities::{Capability, CapabilityArgs, CapabilityCaller, CapabilityRequest, RunId};
 pub use model_request::ModelRequest;
 pub use provider::ModelProvider;
 pub use provider_error::ProviderId;
