@@ -4,11 +4,13 @@ use crate::agents::step::{
 };
 use crate::core::types::ExecutionPolicy;
 use crate::core::{
-    Agent, AgentContext, ChatRequest, ChatResponse, ExecutionStatus, Message, ModelRequest, Role,
+    Agent, AgentContext, Capability, CapabilityArgs, CapabilityCaller, CapabilityRequest,
+    ChatRequest, ChatResponse, ExecutionStatus, Message, ModelRequest, Role, RunId, TaintLevel,
+    ToolRequest,
 };
 use crate::maker::race_to_k;
 use crate::state::AppState;
-use crate::tools::stubs::run_internal_stub;
+use crate::tools::router::ToolRouter;
 use evalexpr::{build_operator_tree, DefaultNumericTypes};
 use regex::Regex;
 use std::sync::{Arc, OnceLock};
@@ -197,6 +199,8 @@ impl MakerOrchestrator {
         // Pull the latest user text for deterministic pre-flight routing.
         let user_text =
             initial_req.messages.last().map(|m| m.content.to_lowercase()).unwrap_or_default();
+        let run_id = RunId::new();
+        let taint = TaintLevel::UserProvided;
 
         let policy = classify_intent(&user_text, true);
         info!(target: "maker", policy = ?policy, "POLICY_SELECTED");
@@ -204,7 +208,7 @@ impl MakerOrchestrator {
         match policy {
             ExecutionPolicy::DecomposeAndExecute => {
                 info!(target: "maker", "ENTER run_compound");
-                let content = self.run_compound(&user_text).await?;
+                let content = self.run_compound(&user_text, run_id.clone(), taint).await?;
                 Ok(ChatResponse {
                     message: Message { role: Role::Assistant, content },
                     status: ExecutionStatus::Done,
@@ -212,8 +216,9 @@ impl MakerOrchestrator {
                 })
             }
             ExecutionPolicy::InternalStub { tool_name, args } => {
-                let content = run_internal_stub(&tool_name, &args)
-                    .unwrap_or_else(|| format!("stub {} failed", tool_name));
+                let _ = args;
+                let content =
+                    self.request_internal_stub(run_id.clone(), &tool_name, None, taint).await;
                 Ok(ChatResponse {
                     message: Message { role: Role::Assistant, content },
                     status: ExecutionStatus::Done,
@@ -261,7 +266,12 @@ impl MakerOrchestrator {
         }
     }
 
-    async fn run_compound(&self, prompt: &str) -> anyhow::Result<String> {
+    async fn run_compound(
+        &self,
+        prompt: &str,
+        run_id: RunId,
+        taint: TaintLevel,
+    ) -> anyhow::Result<String> {
         // Prefer deterministic templates for known patterns to avoid decomposer drift.
         let steps_raw = if let Some(template) = pattern_plan(prompt) {
             template
@@ -324,7 +334,15 @@ impl MakerOrchestrator {
             info!(target: "maker", step = %instr, rendered = %rendered, strategy = ?strategy, "EXECUTING_STEP");
 
             let result = self
-                .execute_step_with_strategy(&step, &rendered, strategy, &ctx, &context_history)
+                .execute_step_with_strategy(
+                    &step,
+                    &rendered,
+                    strategy,
+                    &ctx,
+                    &context_history,
+                    &run_id,
+                    taint,
+                )
                 .await?;
 
             ctx.step_results.insert(step.id, result.clone());
@@ -338,20 +356,25 @@ impl MakerOrchestrator {
 
     async fn execute_step_with_strategy(
         &self,
-        _step: &Step,
+        step: &Step,
         rendered: &str,
         strategy: ExecStrategy,
         ctx: &ExecutionContext,
         context_history: &str,
+        run_id: &RunId,
+        taint: TaintLevel,
     ) -> anyhow::Result<String> {
         match strategy {
             ExecStrategy::ToolCall(tool) => match tool {
                 ToolKind::SystemTime => {
-                    if let Some(res) = run_internal_stub("system_time", "") {
-                        Ok(res)
-                    } else {
-                        Ok("system_time stub failed".to_string())
-                    }
+                    Ok(self
+                        .request_internal_stub(
+                            run_id.clone(),
+                            "system_time",
+                            Some(step.id.to_string()),
+                            taint,
+                        )
+                        .await)
                 }
                 ToolKind::Calculator => {
                     // replace prior timestamp with its year before parsing
@@ -383,9 +406,15 @@ impl MakerOrchestrator {
                         }
                     }
                     if let Some(e) = expr {
-                        if let Some(res) = run_internal_stub("calculator", &e) {
-                            return Ok(res);
-                        }
+                        let _ = e;
+                        return Ok(self
+                            .request_internal_stub(
+                                run_id.clone(),
+                                "calculator",
+                                Some(step.id.to_string()),
+                                taint,
+                            )
+                            .await);
                     }
                     Ok(rendered.to_string())
                 }
@@ -409,6 +438,36 @@ impl MakerOrchestrator {
                 let resp = self.state.router_agent.handle_chat(req, AgentContext).await?;
                 Ok(resp.message.content)
             }
+        }
+    }
+
+    async fn request_internal_stub(
+        &self,
+        run_id: RunId,
+        tool_name: &str,
+        step_id: Option<String>,
+        taint: TaintLevel,
+    ) -> String {
+        let router = ToolRouter::new();
+        let req = ToolRequest {
+            capability_request: CapabilityRequest {
+                run_id,
+                capability: Capability::InternalStub,
+                args: CapabilityArgs::InternalStub { name: tool_name.to_string() },
+                caller: CapabilityCaller::Orchestrator,
+                taint,
+                step_id,
+            },
+        };
+        let resp = router.execute(req).await;
+        if resp.ok {
+            if let Some(output) = resp.output {
+                output.to_string()
+            } else {
+                "ok".to_string()
+            }
+        } else {
+            resp.error.unwrap_or_else(|| "tool execution failed".to_string())
         }
     }
 }
