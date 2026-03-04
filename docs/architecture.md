@@ -4,6 +4,7 @@ This document targets contributors who want to extend or harden the system. Boom
 
 ## Components
 - **Daemon (`boomai-daemon`)**: Axum + Tokio HTTP service. Houses orchestration logic, model abstraction, and persistence.
+- **Safety Sidecar (`src/safety`)**: Ingress sanitizer + prompt-injection detector + risk engine that gates every tool call.
 - **Core module (`src/core`)**: Shared types, agent trait, and model providers (HttpProvider, DummyProvider). Replaces the former `boomai-core` crate.
 - **Agents (`src/agents`)**:
   - Classifier, Decomposer, Router, Verifier, Calculator, Interrogator
@@ -37,6 +38,7 @@ This document targets contributors who want to extend or harden the system. Boom
   - TOOL → Router decides tool use via the tool registry
   - COMPLEX → Full MDAP loop with classification, decomposition, routing, verification, Maker voting for reasoning
 - Context isolation: minimal context passed per step to limit drift.
+- Tainted ingress is scanned before orchestration. Tool requests are risk-classified (`green/amber/red`) before execution.
 
 ## Concurrency
 - Tokio runtime; Axum for HTTP.
@@ -47,6 +49,7 @@ This document targets contributors who want to extend or harden the system. Boom
 - `config_persistence.rs`:
   - Load/save `DaemonConfigStore` asynchronously.
   - History + rollback support.
+  - API key persisted in OS keyring; JSON config is sanitized before write.
   - Validation via `ModelConfig::validate()`.
 
 ## Local Models
@@ -64,4 +67,3 @@ This document targets contributors who want to extend or harden the system. Boom
 ## Frontend Contract (high level)
 - HTTP API on `localhost:3030`
 - Endpoints: chat, config/model (save/test/reload/rollback), config/local (available/installed/install/uninstall), system profile/recommendation, MCP server/tool management.
-

@@ -32,7 +32,7 @@ pub enum CapabilityArgs {
     FsWrite { path: PathBuf, bytes: usize, diff_preview: Option<String> },
     FsDelete { path: PathBuf },
     NetHttp { method: String, domain: String },
-    InternalStub { name: String },
+    InternalStub { name: String, input: Option<String> },
     McpCall { server: String, tool: String },
     RestrictedCommand { command: String, args: Vec<String> },
 }

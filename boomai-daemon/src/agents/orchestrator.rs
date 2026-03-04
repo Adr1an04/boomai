@@ -9,6 +9,7 @@ use crate::core::{
     ToolRequest,
 };
 use crate::maker::race_to_k;
+use crate::safety::SafetySidecar;
 use crate::state::AppState;
 use crate::tools::router::ToolRouter;
 use evalexpr::{build_operator_tree, DefaultNumericTypes};
@@ -196,10 +197,21 @@ impl MakerOrchestrator {
     }
 
     pub async fn run(&self, initial_req: ChatRequest) -> anyhow::Result<ChatResponse> {
-        // Pull the latest user text for deterministic pre-flight routing.
-        let user_text =
-            initial_req.messages.last().map(|m| m.content.to_lowercase()).unwrap_or_default();
-        let exec_ctx = StepExecContext { run_id: RunId::new(), taint: TaintLevel::UserProvided };
+        // Pull and sanitize latest user text before it reaches tool planning/LLM calls.
+        let sidecar = SafetySidecar::default();
+        let raw_user_text =
+            initial_req.messages.last().map(|m| m.content.clone()).unwrap_or_default();
+        let ingress_scan = sidecar.scan_ingress(&raw_user_text);
+        if ingress_scan.looks_like_prompt_injection {
+            info!(
+                target: "security",
+                findings = ?ingress_scan.findings,
+                "ingress prompt-injection indicators detected"
+            );
+        }
+
+        let user_text = ingress_scan.sanitized_input;
+        let exec_ctx = StepExecContext { run_id: RunId::new(), taint: ingress_scan.taint };
 
         let policy = classify_intent(&user_text, true);
         info!(target: "maker", policy = ?policy, "POLICY_SELECTED");
@@ -215,8 +227,8 @@ impl MakerOrchestrator {
                 })
             }
             ExecutionPolicy::InternalStub { tool_name, args } => {
-                let _ = args;
-                let content = self.request_internal_stub(&exec_ctx, &tool_name, None).await;
+                let input = if args.trim().is_empty() { None } else { Some(args) };
+                let content = self.request_internal_stub(&exec_ctx, &tool_name, None, input).await;
                 Ok(ChatResponse {
                     message: Message { role: Role::Assistant, content },
                     status: ExecutionStatus::Done,
@@ -362,7 +374,7 @@ impl MakerOrchestrator {
         match strategy {
             ExecStrategy::ToolCall(tool) => match tool {
                 ToolKind::SystemTime => Ok(self
-                    .request_internal_stub(exec_ctx, "system_time", Some(step.id.to_string()))
+                    .request_internal_stub(exec_ctx, "system_time", Some(step.id.to_string()), None)
                     .await),
                 ToolKind::Calculator => {
                     // replace prior timestamp with its year before parsing
@@ -394,12 +406,12 @@ impl MakerOrchestrator {
                         }
                     }
                     if let Some(e) = expr {
-                        let _ = e;
                         return Ok(self
                             .request_internal_stub(
                                 exec_ctx,
                                 "calculator",
                                 Some(step.id.to_string()),
+                                Some(e),
                             )
                             .await);
                     }
@@ -433,13 +445,14 @@ impl MakerOrchestrator {
         exec_ctx: &StepExecContext,
         tool_name: &str,
         step_id: Option<String>,
+        input: Option<String>,
     ) -> String {
         let router = ToolRouter::new();
         let req = ToolRequest {
             capability_request: CapabilityRequest {
                 run_id: exec_ctx.run_id.clone(),
                 capability: Capability::InternalStub,
-                args: CapabilityArgs::InternalStub { name: tool_name.to_string() },
+                args: CapabilityArgs::InternalStub { name: tool_name.to_string(), input },
                 caller: CapabilityCaller::Orchestrator,
                 taint: exec_ctx.taint,
                 step_id,
@@ -448,7 +461,11 @@ impl MakerOrchestrator {
         let resp = router.execute(req).await;
         if resp.ok {
             if let Some(output) = resp.output {
-                output.to_string()
+                if let Some(result) = output.get("result").and_then(|value| value.as_str()) {
+                    result.to_string()
+                } else {
+                    output.to_string()
+                }
             } else {
                 "ok".to_string()
             }

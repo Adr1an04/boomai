@@ -12,4 +12,8 @@ pub struct ToolResponse {
     pub ok: bool,
     pub output: Option<serde_json::Value>,
     pub error: Option<String>,
+    #[serde(default)]
+    pub risk: Option<String>,
+    #[serde(default)]
+    pub requires_confirmation: bool,
 }

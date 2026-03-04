@@ -14,6 +14,7 @@ mod handlers;
 mod local;
 mod maker;
 mod mcp;
+mod safety;
 mod state;
 mod system;
 mod tools;

@@ -28,6 +28,7 @@ Key points:
 
 - Built with **Axum** and **Tokio** for processing multiple operations simultaneously
 - Tiered execution: deterministic internal stubs (calculator, system time) plus **Maker** as the voting tool for reasoning, all routed by policy
+- Safety sidecar intercepts ingress + tool calls (tainting, prompt-injection checks, risk policy)
 - Parallel task execution to avoid sequential bottlenecks with other agents
 - OpenAI style JSON over HTTP through a unified provider abstraction
 
@@ -153,7 +154,7 @@ CI summary:
   - macOS: `~/Library/Application Support/boomai/config.json`
   - Linux: `~/.config/boomai/config.json`
   - Windows: `%APPDATA%\\boomai\\config.json`
-- The file holds active model settings and up to 5 backups; `api_key` may be present in plaintext. Scrub or exclude it if backing up.
+- The file holds active model settings and up to 5 backups; API keys are stored in the OS keychain (`keyring`) and sanitized out of `config.json`.
 - Model binaries are managed by Ollama in its cache (e.g., `~/.ollama`). Remove with `ollama rm <model>` to reclaim space.
 
 ---
